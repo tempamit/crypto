@@ -6,7 +6,7 @@ from google import genai
 # ==========================================
 # 1. YOUR CONFIGURATION (FILL THESE IN)
 # ==========================================
-WP_URL = "https://news.ipds.cloud/wp-json/wp/v2/posts"
+WP_URL = "https://news.ipds.cloud/?rest_route=/wp/v2/posts"
 WP_USER = "adminipds"  # The username you use to log in
 WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz"  # The one you generated in WP
 
