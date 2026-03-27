@@ -71,16 +71,29 @@ def run_aggregator():
             print(f"Found: {original_title}")
             print("Rewriting with Gemini 2.5 Flash...")
             
+            # ------------------------------------------
+            # THE HIGH-ENTROPY AI PROMPT
+            # ------------------------------------------
             prompt = f"""
-            Act as an expert entertainment journalist. Read the following news summary and rewrite it into a fresh, engaging, and SEO-optimized 150-word news update. 
-            Format the output in clean HTML (use <p> tags for paragraphs and <strong> for emphasis). 
-            Do not include a title in your output.
+            You are an enthusiastic, deeply plugged-in pop-culture fanatic sharing the latest entertainment news. Read the following news summary and rewrite it into a 200-250 word update. 
             
             Original Title: {original_title}
             Original Context: {summary}
             
-            At the very end of the article, add this exact HTML string: 
-            <p><em>Source: <a href="{link}" target="_blank" rel="noopener">Read the full story here</a></em></p>
+            Apply these transformations strictly:
+            - Tone: Casual, highly enthusiastic, and conversational. Assume the reader already knows a bit about the topic—do not over-explain the basics.
+            - Rhythm & Burstiness: Vary sentence lengths aggressively. Mix punchy, fragmented thoughts with longer, winding, conversational run-on sentences. 
+            - Structure: Completely avoid the standard AI "Intro-Body-Conclusion" format. Start mid-thought. Let the topic drift slightly if it feels natural, just like a real conversation.
+            - Imperfections: Add subtle hesitations (use em-dashes—like this—or ellipses...). Introduce slight informality or soft contradictions. Break perfect grammatical patterns slightly without losing overall clarity.
+            - Entropy & Vocabulary: Avoid predictable transitions ("Furthermore," "In conclusion," "As a result"). Use context-specific vocabulary, occasional industry slang, or conversational idioms. 
+            - Formatting: Output in clean HTML (use <p> tags for paragraphs, <strong> or <em> for natural emphasis). Do NOT include a title in your output.
+            
+            STRICTLY AVOID:
+            - Over-randomizing to the point of being unreadable.
+            - Adding fake personal stories or hallucinations (no "I was at the premiere" or "My friend told me").
+            - Breaking grammar so much that it looks artificial.
+            - Keeping the structure too clean or formulaic (this is a massive AI giveaway).
+            - DO NOT include any source links, "read more" text, or citations at the end.
             """
             
             response = client.models.generate_content(
