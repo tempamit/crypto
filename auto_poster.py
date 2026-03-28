@@ -26,10 +26,10 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = [
     "gemini-2.5-flash",          # The standard 2.5 model (Usually has 1,500 free requests/day)
     "gemini-2.0-flash",          # Extremely stable high-capacity fallback
-    "gemini-1.5-flash-latest"    # Explicit tag to force the 1.5 series to work
-    "gemini-2.5-flash-lite"    # Backup 2: Experimental
-    "gemini-3-flash-previ"
-    "gemini-3.1-flash-lite-preview"
+    "gemini-1.5-flash-latest",    # Explicit tag to force the 1.5 series to work
+    "gemini-2.5-flash-lite",    # Backup 2: Experimental
+    "gemini-3-flash-previ",
+    "gemini-3.1-flash-lite-preview",
     "gemini-3.1-pro-preview"
 ]
 
