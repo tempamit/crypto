@@ -7,6 +7,8 @@ from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+
+
 # ==========================================
 # 1. YOUR CONFIGURATION
 # ==========================================
