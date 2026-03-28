@@ -54,7 +54,7 @@ FEEDS = [
         "name": "E! Online Top Stories (Lifestyle)",
         "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", 
         "category_ids": [4, 5]  
-    }
+    },
 
     # --- THE NEW HIGH-TRAFFIC EXPANSION FEEDS ---
     {
