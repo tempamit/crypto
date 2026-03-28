@@ -3,6 +3,8 @@ import feedparser
 import time
 import json
 import re
+import html
+from urllib.parse import quote
 from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -22,20 +24,41 @@ JSON_KEY_FILE = "service_account.json"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# THE CASCADING FALLBACK LIST
+# ==========================================
+# 2. THE CASCADING FALLBACK LIST
+# ==========================================
+# Using the most stable, active models to avoid 404 errors
 FALLBACK_MODELS = [
-    "gemini-2.5-flash",          # The standard 2.5 model (Usually has 1,500 free requests/day)
-    "gemini-2.0-flash",          # Extremely stable high-capacity fallback
-    "gemini-1.5-flash-latest",    # Explicit tag to force the 1.5 series to work
-    "gemini-2.5-flash-lite",    # Backup 2: Experimental
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite"
+    "gemini-1.5-flash-latest",
     "gemini-3-flash-previ",
     "gemini-3.1-flash-lite-preview",
     "gemini-3.1-pro-preview"
 ]
 
 # ==========================================
-# 2. HELPER FUNCTIONS
+# 3. HELPER FUNCTIONS
 # ==========================================
+
+def article_exists_in_wp(title):
+    """Checks WordPress to see if an article with this title is already published."""
+    try:
+        # Search WP for the exact title
+        search_url = f"{WP_URL}?search={quote(title)}&_fields=title"
+        res = requests.get(search_url, auth=(WP_USER, WP_APP_PASSWORD))
+        if res.status_code == 200:
+            posts = res.json()
+            for post in posts:
+                # Clean up WP's HTML formatting to do a direct text comparison
+                wp_title = html.unescape(post['title']['rendered']).strip().lower()
+                if wp_title == title.strip().lower():
+                    return True
+    except Exception as e:
+        print(f"  [!] Error checking WP for duplicates: {e}")
+    return False
 
 def ping_google_indexing(url):
     try:
@@ -84,7 +107,7 @@ def get_or_create_tags(tag_names):
     return tag_ids
 
 # ==========================================
-# 3. MAIN ENGINE
+# 4. MAIN ENGINE
 # ==========================================
 
 FEEDS = [
@@ -111,6 +134,13 @@ def run_aggregator():
             
             latest = feed.entries[0]
             original_title = latest.title
+
+            # --- THE DUPLICATE CHECKER ---
+            if article_exists_in_wp(original_title):
+                print(f"  [✓] Skipping: Already published ('{original_title}')")
+                time.sleep(5) # Small pause to not overwhelm the server, then skip to next feed
+                continue
+
             summary = getattr(latest, 'summary', original_title)
             
             # Find Image
@@ -146,21 +176,15 @@ def run_aggregator():
                     break # Success! Break out of the fallback loop
                 
                 except Exception as e:
-                    error_msg = str(e)
-                    if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                        print(f"  [!] Quota exhausted for {model_name}. Switching to next model...")
-                        continue # Move to the next model in the list
-                    else:
-                        print(f"  [!] Formatting error with {model_name}: {e}")
-                        break # Break loop if it's a JSON/parsing error, not a quota issue
+                    print(f"  [!] Error with {model_name}: {e}. Trying next model...")
+                    continue 
 
-            # If all models failed or got exhausted
             if not ai_data:
-                print("  [X] All models exhausted or failed. Cooling down for 60 seconds...")
-                time.sleep(60)
-                continue # Skip this article and move to the next feed
+                print("  [X] All models exhausted. Cooling down for 5 minutes to reset quotas...")
+                time.sleep(300) # Increased cooldown to 5 minutes to actually let free quotas reset
+                continue 
 
-            # Build Final Content with Internal Links
+            # Build Final Content
             related_html = get_related_posts_html(feed_info['category_ids'][0])
             final_content = ai_data['article_html'] + related_html
 
@@ -181,10 +205,10 @@ def run_aggregator():
             
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
-                print(f"Success! Article Live: {new_url}")
+                print(f"  [+] Success! Article Live: {new_url}")
                 ping_google_indexing(new_url)
             else:
-                print(f"WordPress Error: {wp_res.status_code}")
+                print(f"  [!] WordPress Error: {wp_res.status_code}")
 
         except Exception as e:
             print(f"General Error processing {feed_info['name']}: {e}")
