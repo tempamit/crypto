@@ -26,8 +26,13 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # ==========================================
 FEEDS = [
     {
-        "name": "Bollywood Hungama (India)",
-        "url": "https://www.bollywoodhungama.com/rss/news", 
+        "name": "FilmiBeat Bollywood (India)",
+        "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", 
+        "category_ids": [7, 2]  
+    },
+    {
+        "name": "Times of India (Bollywood)",
+        "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", 
         "category_ids": [7, 2]  
     },
     {
