@@ -1,17 +1,16 @@
 import requests
 import feedparser
 import time
-import json  # <--- THIS IS THE MISSING PIECE
+import json  
 import re
 from google import genai
 
 # ==========================================
-# 1. YOUR CONFIGURATION (FILL THESE IN)
+# 1. YOUR CONFIGURATION
 # ==========================================
-WP_URL = "https://news.ipds.cloud/?rest_route=/wp/v2/posts"
 WP_URL = "https://news.ipds.cloud/wp-json/wp/v2/posts"
-WP_MEDIA_URL = "https://news.ipds.cloud/wp-json/wp/v2/media"  # <--- Make sure this is here
-WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"    # <--- Make sure this is here
+WP_MEDIA_URL = "https://news.ipds.cloud/wp-json/wp/v2/media"  
+WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"    
 
 WP_USER = "adminipds"  # The username you use to log in
 WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz"  # The one you generated in WP
@@ -55,32 +54,30 @@ FEEDS = [
         "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", 
         "category_ids": [4, 5]  
     },
-
-    # --- THE NEW HIGH-TRAFFIC EXPANSION FEEDS ---
     {
         "name": "Hindustan Times (OTT & Web Series)",
         "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", 
-        "category_ids": [56]  # <--- Replace 99 with your new 'OTT' Category ID
+        "category_ids": [56]  
     },
     {
         "name": "IGN (Global Gaming & Esports)",
         "url": "https://feeds.ign.com/ign/games-all", 
-        "category_ids": [57]  # <--- Replace 99 with your new 'Gaming' Category ID
+        "category_ids": [57]  
     },
     {
         "name": "Anime News Network (Anime & Manga)",
         "url": "https://www.animenewsnetwork.com/news/rss.xml", 
-        "category_ids": [58]  # <--- Replace 99 with your new 'Anime' Category ID
+        "category_ids": [58]  
     },
     {
         "name": "Soompi (K-Pop & K-Drama)",
         "url": "https://www.soompi.com/feed", 
-        "category_ids": [59, 3]  # <--- Replace 99 with your new 'K-Pop' Category ID (also tags as Music)
+        "category_ids": [59, 3]  
     },
     {
         "name": "The Verge (Entertainment Tech)",
         "url": "https://www.theverge.com/rss/index.xml", 
-        "category_ids": [60]  # <--- Replace 99 with your new 'Tech' Category ID
+        "category_ids": [60]  
     }
 ]
 
@@ -92,7 +89,6 @@ def upload_image_to_wp(image_url, article_title):
         print("Downloading image from RSS...")
         img_data = requests.get(image_url, timeout=10).content
         
-        # Clean up the title to make a safe filename
         safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
         
         headers = {
@@ -151,7 +147,6 @@ def run_aggregator():
             print(f"Found: {original_title}")
             print("Handing over to Gemini for Article, Meta Description, and Tags...")
             
-            # The JSON Prompt
             prompt = f"""
             You are an enthusiastic pop-culture fanatic. Read the news summary and rewrite it into a 200-250 word update. 
             Original Title: {original_title}
@@ -176,16 +171,13 @@ def run_aggregator():
                 contents=prompt
             )
             
-            # Clean and parse the JSON from Gemini
+            # THE FIX: Safely strip markdown block indicators from the JSON output
             raw_text = response.text.strip()
-            if raw_text.startswith('```json'):
-                raw_text = raw_text[7:-3].strip()
-            elif raw_text.startswith('```'):
-                raw_text = raw_text[3:-3].strip()
+            raw_text = raw_text.replace("```json", "").replace("```html", "").replace("```", "").strip()
                 
             ai_data = json.loads(raw_text)
             
-            # 2. Upload the Image (if we found one)
+            # 2. Upload the Image 
             media_id = None
             if image_url:
                 media_id = upload_image_to_wp(image_url, original_title)
@@ -198,13 +190,12 @@ def run_aggregator():
             post_data = {
                 "title": original_title, 
                 "content": ai_data['article_html'],
-                "excerpt": ai_data['meta_description'], # Injects the SEO snippet
+                "excerpt": ai_data['meta_description'], 
                 "status": "publish", 
                 "categories": feed_info['category_ids'],
                 "tags": tag_ids
             }
             
-            # Attach the image if successful
             if media_id:
                 post_data['featured_media'] = media_id
             
@@ -218,9 +209,7 @@ def run_aggregator():
                 
         except Exception as e:
             print(f"Error processing {feed_info['name']}: {e}")
-            continue 
             
-        # --- THE FIX: Take a 10-second breath before the next feed to avoid API bans ---
         print("Pausing for 30 seconds to respect API rate limits...")
         time.sleep(30)
 
