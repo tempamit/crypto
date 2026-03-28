@@ -18,114 +18,175 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # ==========================================
 # 2. MULTI-COUNTRY FEED DICTIONARY
 # ==========================================
-# Mapping the exact category IDs you extracted from news.ipds.cloud
 FEEDS = [
     {
-        "name": "Bollywood Hungama (India / UAE)",
+        "name": "Bollywood Hungama (India)",
         "url": "https://www.bollywoodhungama.com/rss/news", 
-        "category_ids": [7, 2]  # Bollywood, Movies
+        "category_ids": [7, 2]  
     },
     {
-        "name": "Variety Film (US / Hollywood)",
+        "name": "Variety Film (Hollywood)",
         "url": "https://variety.com/v/film/feed/", 
-        "category_ids": [8, 2]  # Hollywood, Movies
+        "category_ids": [8, 2]  
     },
     {
-        "name": "BBC Entertainment (UK / Global)",
+        "name": "BBC Entertainment (Global)",
         "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", 
-        "category_ids": [6]     # Global
+        "category_ids": [6]     
     },
     {
         "name": "NME (Global Music)",
         "url": "https://www.nme.com/news/music/feed", 
-        "category_ids": [3, 6]  # Music, Global
+        "category_ids": [3, 6]  
     },
     {
-        "name": "E! Online Top Stories (Celebrity / Lifestyle)",
+        "name": "E! Online Top Stories (Lifestyle)",
         "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", 
-        "category_ids": [4, 5]  # Celebrities, Lifestyle
+        "category_ids": [4, 5]  
     }
 ]
 
 # ==========================================
-# 3. FETCH, REWRITE, AND POST
+# 3. HELPER FUNCTIONS (IMAGES & TAGS)
+# ==========================================
+def upload_image_to_wp(image_url, article_title):
+    try:
+        print("Downloading image from RSS...")
+        img_data = requests.get(image_url, timeout=10).content
+        
+        # Clean up the title to make a safe filename
+        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
+        
+        headers = {
+            "Content-Type": "image/jpeg",
+            "Content-Disposition": f"attachment; filename={safe_name}.jpg"
+        }
+        
+        print("Uploading image to WordPress Media Library...")
+        res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
+        
+        if res.status_code == 201:
+            print("Image uploaded successfully!")
+            return res.json()['id']
+    except Exception as e:
+        print(f"Failed to process image: {e}")
+    return None
+
+def get_or_create_tags(tag_names):
+    tag_ids = []
+    for tag in tag_names:
+        res = requests.post(WP_TAGS_URL, auth=(WP_USER, WP_APP_PASSWORD), json={"name": tag})
+        if res.status_code == 201:
+            tag_ids.append(res.json()['id'])
+        elif res.status_code == 400 and 'term_exists' in res.text:
+            tag_ids.append(res.json()['data']['term_id'])
+    return tag_ids
+
+# ==========================================
+# 4. FETCH, REWRITE, AND POST
 # ==========================================
 def run_aggregator():
-    print("Starting news sweep across all regions...")
+    print("\nStarting SEO-Optimized News Sweep...")
     
     for feed_info in FEEDS:
         print(f"\n--- Checking: {feed_info['name']} ---")
         
         try:
             feed = feedparser.parse(feed_info['url'])
-            
             if not feed.entries:
-                print("No articles found in this feed right now.")
                 continue
 
             latest_article = feed.entries[0]
             original_title = latest_article.title
-            link = latest_article.link
+            
+            # 1. Try to find an image in the RSS feed
+            image_url = None
+            if 'media_content' in latest_article:
+                image_url = latest_article.media_content[0]['url']
+            elif 'links' in latest_article:
+                for link in latest_article.links:
+                    if 'image' in link.get('type', ''):
+                        image_url = link.href
+
             summary = getattr(latest_article, 'summary', original_title) 
 
             print(f"Found: {original_title}")
-            print("Rewriting with Gemini 2.5 Flash...")
+            print("Handing over to Gemini for Article, Meta Description, and Tags...")
             
-            # ------------------------------------------
-            # THE HIGH-ENTROPY AI PROMPT
-            # ------------------------------------------
+            # The JSON Prompt
             prompt = f"""
-            You are an enthusiastic, deeply plugged-in pop-culture fanatic sharing the latest entertainment news. Read the following news summary and rewrite it into a 200-250 word update. 
-            
+            You are an enthusiastic pop-culture fanatic. Read the news summary and rewrite it into a 200-250 word update. 
             Original Title: {original_title}
             Original Context: {summary}
             
             Apply these transformations strictly:
-            - Tone: Casual, highly enthusiastic, and conversational. Assume the reader already knows a bit about the topic—do not over-explain the basics.
-            - Rhythm & Burstiness: Vary sentence lengths aggressively. Mix punchy, fragmented thoughts with longer, winding, conversational run-on sentences. 
-            - Structure: Completely avoid the standard AI "Intro-Body-Conclusion" format. Start mid-thought. Let the topic drift slightly if it feels natural, just like a real conversation.
-            - Imperfections: Add subtle hesitations (use em-dashes—like this—or ellipses...). Introduce slight informality or soft contradictions. Break perfect grammatical patterns slightly without losing overall clarity.
-            - Entropy & Vocabulary: Avoid predictable transitions ("Furthermore," "In conclusion," "As a result"). Use context-specific vocabulary, occasional industry slang, or conversational idioms. 
-            - Formatting: Output in clean HTML (use <p> tags for paragraphs, <strong> or <em> for natural emphasis). Do NOT include a title in your output.
+            - Tone: Casual, highly enthusiastic, conversational. 
+            - Rhythm: Vary sentence lengths aggressively. Mix punchy fragments with longer thoughts. 
+            - Structure: Avoid standard "Intro-Body-Conclusion". Start mid-thought.
+            - Formatting: HTML format (<p>, <strong>). NO title. NO source links.
             
-            STRICTLY AVOID:
-            - Over-randomizing to the point of being unreadable.
-            - Adding fake personal stories or hallucinations (no "I was at the premiere" or "My friend told me").
-            - Breaking grammar so much that it looks artificial.
-            - Keeping the structure too clean or formulaic (this is a massive AI giveaway).
-            - DO NOT include any source links, "read more" text, or citations at the end.
+            YOU MUST OUTPUT YOUR RESPONSE AS A VALID JSON OBJECT EXACTLY LIKE THIS:
+            {{
+                "article_html": "your html content here",
+                "meta_description": "A punchy, 150-character SEO summary of the article.",
+                "tags": ["keyword1", "keyword2", "keyword3"]
+            }}
             """
             
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt
             )
-            ai_rewritten_content = response.text
             
-            # WordPress payload: Pushing LIVE to your specific category IDs
+            # Clean and parse the JSON from Gemini
+            raw_text = response.text.strip()
+            if raw_text.startswith('```json'):
+                raw_text = raw_text[7:-3].strip()
+            elif raw_text.startswith('```'):
+                raw_text = raw_text[3:-3].strip()
+                
+            ai_data = json.loads(raw_text)
+            
+            # 2. Upload the Image (if we found one)
+            media_id = None
+            if image_url:
+                media_id = upload_image_to_wp(image_url, original_title)
+
+            # 3. Create the Tags in WordPress
+            print("Generating SEO tags...")
+            tag_ids = get_or_create_tags(ai_data['tags'])
+            
+            # 4. Push the Ultimate Payload
             post_data = {
                 "title": original_title, 
-                "content": ai_rewritten_content,
+                "content": ai_data['article_html'],
+                "excerpt": ai_data['meta_description'], # Injects the SEO snippet
                 "status": "publish", 
-                "categories": feed_info['category_ids'] 
+                "categories": feed_info['category_ids'],
+                "tags": tag_ids
             }
             
+            # Attach the image if successful
+            if media_id:
+                post_data['featured_media'] = media_id
+            
+            print("Pushing fully optimized article to news.ipds.cloud...")
             response = requests.post(WP_URL, auth=(WP_USER, WP_APP_PASSWORD), json=post_data)
             
             if response.status_code == 201:
-                print(f"Success! Published live to categories: {feed_info['category_ids']}.")
+                print(f"Success! Article is Live with SEO Meta, Tags, and Image.")
             else:
-                print(f"Error pushing to WP: {response.status_code}")
+                print(f"Error pushing to WP: {response.status_code} - {response.text}")
                 
         except Exception as e:
             print(f"Error processing {feed_info['name']}: {e}")
             continue 
 
 # ==========================================
-# 4. THE AUTOMATION LOOP
+# 5. THE AUTOMATION LOOP
 # ==========================================
 if __name__ == "__main__":
-    print("Global Multi-Category News Engine Online.")
+    print("Full-Stack SEO News Engine Online.")
     while True:
         run_aggregator()
         print("\nSweep complete. Sleeping for 60 minutes...")
