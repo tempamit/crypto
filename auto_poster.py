@@ -1,6 +1,8 @@
 import requests
 import feedparser
-import time # <-- Add this at the top
+import time
+import json  # <--- THIS IS THE MISSING PIECE
+import re
 from google import genai
 
 # ==========================================
