@@ -219,6 +219,10 @@ def run_aggregator():
         except Exception as e:
             print(f"Error processing {feed_info['name']}: {e}")
             continue 
+            
+        # --- THE FIX: Take a 10-second breath before the next feed to avoid API bans ---
+        print("Pausing for 30 seconds to respect API rate limits...")
+        time.sleep(30)
 
 # ==========================================
 # 5. THE AUTOMATION LOOP
