@@ -1,9 +1,12 @@
 import requests
 import feedparser
 import time
-import json  
+import json
 import re
 from google import genai
+# NEW IMPORTS FOR INDEXING
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 # ==========================================
 # 1. YOUR CONFIGURATION
@@ -80,7 +83,22 @@ FEEDS = [
         "category_ids": [60]  
     }
 ]
-
+# ==========================================
+# NEW: GOOGLE INDEXING FUNCTION
+# ==========================================
+def ping_google_indexing(url):
+    try:
+        scopes = ["https://www.googleapis.com/auth/indexing"]
+        credentials = service_account.Credentials.from_service_account_file(
+            JSON_KEY_FILE, scopes=scopes
+        )
+        service = build("indexing", "v3", credentials=credentials)
+        body = {"url": url, "type": "URL_UPDATED"}
+        service.urlNotifications().publish(body=body).execute()
+        print(f"Google Indexing API: Successfully pinged {url}")
+    except Exception as e:
+        print(f"Google Indexing API Error: {e}")
+        
 # ==========================================
 # 3. HELPER FUNCTIONS (IMAGES & TAGS)
 # ==========================================
@@ -212,6 +230,7 @@ def run_aggregator():
             
         print("Pausing for 30 seconds to respect API rate limits...")
         time.sleep(30)
+
 
 # ==========================================
 # 5. THE AUTOMATION LOOP
