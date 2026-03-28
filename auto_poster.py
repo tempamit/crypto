@@ -4,7 +4,6 @@ import time
 import json
 import re
 from google import genai
-# NEW IMPORTS FOR INDEXING
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -12,16 +11,13 @@ from googleapiclient.discovery import build
 # 1. YOUR CONFIGURATION
 # ==========================================
 WP_URL = "https://news.ipds.cloud/wp-json/wp/v2/posts"
-WP_MEDIA_URL = "https://news.ipds.cloud/wp-json/wp/v2/media"    
-WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"    
+WP_MEDIA_URL = "https://news.ipds.cloud/wp-json/wp/v2/media"
+WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"
 
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz" 
 
-# Paste your Google AI Studio key here
 GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
-
-# PATH TO YOUR GOOGLE SERVICE ACCOUNT KEY
 JSON_KEY_FILE = "service_account.json" 
 
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -64,7 +60,6 @@ def ping_google_indexing(url):
 # ==========================================
 def upload_image_to_wp(image_url, article_title):
     try:
-        print("Downloading image from RSS...")
         img_data = requests.get(image_url, timeout=10).content
         safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
         headers = {
@@ -72,11 +67,8 @@ def upload_image_to_wp(image_url, article_title):
             "Content-Disposition": f"attachment; filename={safe_name}.jpg"
         }
         res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
-        if res.status_code == 201:
-            print("Image uploaded successfully!")
-            return res.json()['id']
-    except Exception as e:
-        print(f"Failed to process image: {e}")
+        if res.status_code == 201: return res.json()['id']
+    except Exception: pass
     return None
 
 def get_or_create_tags(tag_names):
@@ -99,21 +91,19 @@ def run_aggregator():
         try:
             feed = feedparser.parse(feed_info['url'])
             if not feed.entries: continue
-
-            latest_article = feed.entries[0]
-            original_title = latest_article.title
+            
+            latest = feed.entries[0]
+            original_title = latest.title
             
             image_url = None
-            if 'media_content' in latest_article:
-                image_url = latest_article.media_content[0]['url']
-            elif 'links' in latest_article:
-                for link in latest_article.links:
+            if 'media_content' in latest: image_url = latest.media_content[0]['url']
+            elif 'links' in latest:
+                for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
-            summary = getattr(latest_article, 'summary', original_title) 
-            print(f"Found: {original_title}")
+            summary = getattr(latest, 'summary', original_title)
             
-            prompt = f"Rewrite this news into a 200-word enthusiastic post: {original_title}. Content: {summary}. Output ONLY as valid JSON: {{\"article_html\": \"...\", \"meta_description\": \"...\", \"tags\": []}}"
+            prompt = f"Rewrite this news into a 200-word post. Original: {original_title}. Context: {summary}. Output JSON: {{\"article_html\": \"...\", \"meta_description\": \"...\", \"tags\": []}}"
             
             response = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
             raw_text = response.text.strip().replace("```json", "").replace("```", "").strip()
@@ -136,19 +126,17 @@ def run_aggregator():
             
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
-                print(f"Success! Article live: {new_url}")
+                print(f"Success! Article: {new_url}")
                 ping_google_indexing(new_url)
             else:
-                print(f"Error pushing to WP: {wp_res.status_code}")
+                print(f"WP Error: {wp_res.status_code}")
                 
         except Exception as e:
-            print(f"Error processing {feed_info['name']}: {e}")
+            print(f"Error: {e}")
             
-        print("Pausing for 30 seconds...")
         time.sleep(30)
 
 if __name__ == "__main__":
     while True:
         run_aggregator()
-        print("\nSweep complete. Sleeping for 60 minutes...")
         time.sleep(3600)
