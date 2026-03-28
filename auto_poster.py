@@ -55,6 +55,33 @@ FEEDS = [
         "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", 
         "category_ids": [4, 5]  
     }
+
+    # --- THE NEW HIGH-TRAFFIC EXPANSION FEEDS ---
+    {
+        "name": "Hindustan Times (OTT & Web Series)",
+        "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", 
+        "category_ids": [56]  # <--- Replace 99 with your new 'OTT' Category ID
+    },
+    {
+        "name": "IGN (Global Gaming & Esports)",
+        "url": "https://feeds.ign.com/ign/games-all", 
+        "category_ids": [57]  # <--- Replace 99 with your new 'Gaming' Category ID
+    },
+    {
+        "name": "Anime News Network (Anime & Manga)",
+        "url": "https://www.animenewsnetwork.com/news/rss.xml", 
+        "category_ids": [58]  # <--- Replace 99 with your new 'Anime' Category ID
+    },
+    {
+        "name": "Soompi (K-Pop & K-Drama)",
+        "url": "https://www.soompi.com/feed", 
+        "category_ids": [59, 3]  # <--- Replace 99 with your new 'K-Pop' Category ID (also tags as Music)
+    },
+    {
+        "name": "The Verge (Entertainment Tech)",
+        "url": "https://www.theverge.com/rss/index.xml", 
+        "category_ids": [60]  # <--- Replace 99 with your new 'Tech' Category ID
+    }
 ]
 
 # ==========================================
