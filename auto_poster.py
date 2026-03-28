@@ -40,14 +40,13 @@ FEEDS = [
 ]
 
 # ==========================================
-# GOOGLE INDEXING FUNCTION
+# 3. HELPER FUNCTIONS
 # ==========================================
+
 def ping_google_indexing(url):
     try:
         scopes = ["https://www.googleapis.com/auth/indexing"]
-        credentials = service_account.Credentials.from_service_account_file(
-            JSON_KEY_FILE, scopes=scopes
-        )
+        credentials = service_account.Credentials.from_service_account_file(JSON_KEY_FILE, scopes=scopes)
         service = build("indexing", "v3", credentials=credentials)
         body = {"url": url, "type": "URL_UPDATED"}
         service.urlNotifications().publish(body=body).execute()
@@ -55,88 +54,119 @@ def ping_google_indexing(url):
     except Exception as e:
         print(f"Google Indexing API Error: {e}")
 
-# ==========================================
-# 3. HELPER FUNCTIONS
-# ==========================================
+def get_related_posts_html(category_id):
+    try:
+        params = {"categories": category_id, "per_page": 3, "status": "publish"}
+        res = requests.get(WP_URL, params=params)
+        if res.status_code == 200:
+            posts = res.json()
+            if not posts: return ""
+            html = "<br><hr><h3>Related News You Might Like:</h3><ul>"
+            for p in posts:
+                html += f'<li><a href="{p["link"]}">{p["title"]["rendered"]}</a></li>'
+            html += "</ul>"
+            return html
+    except: return ""
+    return ""
+
 def upload_image_to_wp(image_url, article_title):
     try:
         img_data = requests.get(image_url, timeout=10).content
         safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
-        headers = {
-            "Content-Type": "image/jpeg",
-            "Content-Disposition": f"attachment; filename={safe_name}.jpg"
-        }
+        headers = {"Content-Type": "image/jpeg", "Content-Disposition": f"attachment; filename={safe_name}.jpg"}
         res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
         if res.status_code == 201: return res.json()['id']
-    except Exception: pass
+    except: pass
     return None
 
 def get_or_create_tags(tag_names):
     tag_ids = []
     for tag in tag_names:
         res = requests.post(WP_TAGS_URL, auth=(WP_USER, WP_APP_PASSWORD), json={"name": tag})
-        if res.status_code == 201:
-            tag_ids.append(res.json()['id'])
-        elif res.status_code == 400 and 'term_exists' in res.text:
-            tag_ids.append(res.json()['data']['term_id'])
+        if res.status_code == 201: tag_ids.append(res.json()['id'])
+        elif res.status_code == 400:
+            try: tag_ids.append(res.json()['data']['term_id'])
+            except: pass
     return tag_ids
 
 # ==========================================
-# 4. FETCH, REWRITE, AND POST
+# 4. MAIN ENGINE
 # ==========================================
+
 def run_aggregator():
-    print("\nStarting SEO-Optimized News Sweep...")
+    print("\nStarting Global SEO News Sweep...")
     for feed_info in FEEDS:
-        print(f"\n--- Checking: {feed_info['name']} ---")
+        print(f"\n--- Processing: {feed_info['name']} ---")
         try:
             feed = feedparser.parse(feed_info['url'])
             if not feed.entries: continue
             
             latest = feed.entries[0]
             original_title = latest.title
+            summary = getattr(latest, 'summary', original_title)
             
+            # Find Image
             image_url = None
             if 'media_content' in latest: image_url = latest.media_content[0]['url']
             elif 'links' in latest:
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
-            summary = getattr(latest, 'summary', original_title)
+            # Gemini Rewrite with Strict JSON instructions
+            prompt = f"""
+            Rewrite this news into a 200-word conversational post. 
+            Title: {original_title}. 
+            Context: {summary}. 
             
-            prompt = f"Rewrite this news into a 200-word post. Original: {original_title}. Context: {summary}. Output JSON: {{\"article_html\": \"...\", \"meta_description\": \"...\", \"tags\": []}}"
+            IMPORTANT: Return ONLY valid JSON. Escape all internal double quotes with backslashes.
+            Format:
+            {{
+              "article_html": "HTML content using <p> and <strong> tags",
+              "meta_description": "A 150-character SEO snippet",
+              "tags": ["3 trending keywords"]
+            }}
+            """
             
             response = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
             raw_text = response.text.strip().replace("```json", "").replace("```", "").strip()
             ai_data = json.loads(raw_text)
-            
+
+            # Build Internal Links
+            related_html = get_related_posts_html(feed_info['category_id'][0] if isinstance(feed_info['category_ids'], list) else feed_info['category_ids'])
+            final_content = ai_data['article_html'] + related_html
+
+            # Media & Tags
             media_id = upload_image_to_wp(image_url, original_title) if image_url else None
             tag_ids = get_or_create_tags(ai_data['tags'])
-            
-            post_data = {
-                "title": original_title, 
-                "content": ai_data['article_html'],
-                "excerpt": ai_data['meta_description'], 
-                "status": "publish", 
+
+            # Publish
+            post_payload = {
+                "title": original_title,
+                "content": final_content,
+                "excerpt": ai_data['meta_description'],
+                "status": "publish",
                 "categories": feed_info['category_ids'],
                 "tags": tag_ids
             }
-            if media_id: post_data['featured_media'] = media_id
-            
-            wp_res = requests.post(WP_URL, auth=(WP_USER, WP_APP_PASSWORD), json=post_data)
+            if media_id: post_payload['featured_media'] = media_id
+
+            wp_res = requests.post(WP_URL, auth=(WP_USER, WP_APP_PASSWORD), json=post_payload)
             
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
-                print(f"Success! Article: {new_url}")
+                print(f"Success! Article Live: {new_url}")
                 ping_google_indexing(new_url)
             else:
-                print(f"WP Error: {wp_res.status_code}")
-                
+                print(f"WordPress Error: {wp_res.status_code}")
+
         except Exception as e:
-            print(f"Error: {e}")
-            
+            print(f"Skip Feed {feed_info['name']}: Error -> {e}")
+
+        print("Pacing: 30-second delay...")
         time.sleep(30)
 
 if __name__ == "__main__":
     while True:
         run_aggregator()
+        print("\nSweep Complete. Sleeping for 1 hour...")
         time.sleep(3600)
