@@ -23,24 +23,7 @@ JSON_KEY_FILE = "service_account.json"
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 2. MULTI-COUNTRY FEED DICTIONARY
-# ==========================================
-FEEDS = [
-    {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
-    {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
-    {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]},
-    {"name": "BBC Entertainment (Global)", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", "category_ids": [6]},
-    {"name": "NME (Global Music)", "url": "https://www.nme.com/news/music/feed", "category_ids": [3, 6]},
-    {"name": "E! Online Top Stories (Lifestyle)", "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", "category_ids": [4, 5]},
-    {"name": "Hindustan Times (OTT & Web Series)", "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", "category_ids": [56]},
-    {"name": "IGN (Global Gaming & Esports)", "url": "https://feeds.ign.com/ign/games-all", "category_ids": [57]},
-    {"name": "Anime News Network (Anime & Manga)", "url": "https://www.animenewsnetwork.com/news/rss.xml", "category_ids": [58]},
-    {"name": "Soompi (K-Pop & K-Drama)", "url": "https://www.soompi.com/feed", "category_ids": [59, 3]},
-    {"name": "The Verge (Entertainment Tech)", "url": "https://www.theverge.com/rss/index.xml", "category_ids": [60]}
-]
-
-# ==========================================
-# 3. HELPER FUNCTIONS
+# 2. HELPER FUNCTIONS
 # ==========================================
 
 def ping_google_indexing(url):
@@ -90,13 +73,27 @@ def get_or_create_tags(tag_names):
     return tag_ids
 
 # ==========================================
-# 4. MAIN ENGINE
+# 3. MAIN ENGINE
 # ==========================================
+
+FEEDS = [
+    {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
+    {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
+    {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]},
+    {"name": "BBC Entertainment (Global)", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", "category_ids": [6]},
+    {"name": "NME (Global Music)", "url": "https://www.nme.com/news/music/feed", "category_ids": [3, 6]},
+    {"name": "E! Online Top Stories (Lifestyle)", "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", "category_ids": [4, 5]},
+    {"name": "Hindustan Times (OTT & Web Series)", "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", "category_ids": [56]},
+    {"name": "IGN (Global Gaming & Esports)", "url": "https://feeds.ign.com/ign/games-all", "category_ids": [57]},
+    {"name": "Anime News Network (Anime & Manga)", "url": "https://www.animenewsnetwork.com/news/rss.xml", "category_ids": [58]},
+    {"name": "Soompi (K-Pop & K-Drama)", "url": "https://www.soompi.com/feed", "category_ids": [59, 3]},
+    {"name": "The Verge (Entertainment Tech)", "url": "https://www.theverge.com/rss/index.xml", "category_ids": [60]}
+]
 
 def run_aggregator():
     print("\nStarting Global SEO News Sweep...")
     for feed_info in FEEDS:
-        print(f"\n--- Processing: {feed_info['name']} ---")
+        print(f"\n--- Checking: {feed_info['name']} ---")
         try:
             feed = feedparser.parse(feed_info['url'])
             if not feed.entries: continue
@@ -112,34 +109,37 @@ def run_aggregator():
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
-            # Gemini Rewrite with Strict JSON instructions
+            # NEW: Strict JSON Prompting
             prompt = f"""
-            Rewrite this news into a 200-word conversational post. 
-            Title: {original_title}. 
-            Context: {summary}. 
-            
-            IMPORTANT: Return ONLY valid JSON. Escape all internal double quotes with backslashes.
-            Format:
+            You are a viral news writer. Rewrite this news into a 200-word post. 
+            Title: {original_title}
+            Summary: {summary}
+
+            MANDATORY: Return ONLY a valid JSON object. 
+            Escape all double quotes within strings using a backslash.
+            Structure:
             {{
-              "article_html": "HTML content using <p> and <strong> tags",
-              "meta_description": "A 150-character SEO snippet",
-              "tags": ["3 trending keywords"]
+              "article_html": "HTML post with <p> and <strong> tags",
+              "meta_description": "150-char SEO snippet",
+              "tags": ["trending_keyword1", "trending_keyword2"]
             }}
             """
             
             response = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
-            raw_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+            
+            # IMPROVED JSON CLEANUP
+            raw_text = response.text.strip()
+            # Remove Markdown code blocks if AI included them
+            raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
             ai_data = json.loads(raw_text)
 
-            # Build Internal Links
-            related_html = get_related_posts_html(feed_info['category_id'][0] if isinstance(feed_info['category_ids'], list) else feed_info['category_ids'])
+            # Build Final Content with Internal Links
+            related_html = get_related_posts_html(feed_info['category_ids'][0])
             final_content = ai_data['article_html'] + related_html
 
-            # Media & Tags
             media_id = upload_image_to_wp(image_url, original_title) if image_url else None
             tag_ids = get_or_create_tags(ai_data['tags'])
 
-            # Publish
             post_payload = {
                 "title": original_title,
                 "content": final_content,
@@ -160,9 +160,9 @@ def run_aggregator():
                 print(f"WordPress Error: {wp_res.status_code}")
 
         except Exception as e:
-            print(f"Skip Feed {feed_info['name']}: Error -> {e}")
+            print(f"Error processing {feed_info['name']}: {e}")
 
-        print("Pacing: 30-second delay...")
+        print("Pausing for 30 seconds...")
         time.sleep(30)
 
 if __name__ == "__main__":
