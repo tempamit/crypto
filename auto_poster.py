@@ -7,8 +7,6 @@ from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-
-
 # ==========================================
 # 1. YOUR CONFIGURATION
 # ==========================================
@@ -23,6 +21,13 @@ GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
 JSON_KEY_FILE = "service_account.json" 
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# THE CASCADING FALLBACK LIST
+FALLBACK_MODELS = [
+    "gemini-2.5-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b"
+]
 
 # ==========================================
 # 2. HELPER FUNCTIONS
@@ -78,10 +83,6 @@ def get_or_create_tags(tag_names):
 # 3. MAIN ENGINE
 # ==========================================
 
-# ==========================================
-# 3. MAIN ENGINE
-# ==========================================
-
 FEEDS = [
     {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
     {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
@@ -115,9 +116,8 @@ def run_aggregator():
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
-            # NEW: Strict JSON Prompting
             prompt = f"""
-            You are a viral news writer. Rewrite this news into a 200-word post. 
+            You are a viral news writer. Rewrite this news into a 200-word conversational post. 
             Title: {original_title}
             Summary: {summary}
 
@@ -131,13 +131,30 @@ def run_aggregator():
             }}
             """
             
-            response = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
-            
-            # IMPROVED JSON CLEANUP
-            raw_text = response.text.strip()
-            # Remove Markdown code blocks if AI included them
-            raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
-            ai_data = json.loads(raw_text)
+            # --- THE FALLBACK LOGIC ---
+            ai_data = None
+            for model_name in FALLBACK_MODELS:
+                try:
+                    response = client.models.generate_content(model=model_name, contents=prompt)
+                    raw_text = response.text.strip()
+                    raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
+                    ai_data = json.loads(raw_text)
+                    break # Success! Break out of the fallback loop
+                
+                except Exception as e:
+                    error_msg = str(e)
+                    if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                        print(f"  [!] Quota exhausted for {model_name}. Switching to next model...")
+                        continue # Move to the next model in the list
+                    else:
+                        print(f"  [!] Formatting error with {model_name}: {e}")
+                        break # Break loop if it's a JSON/parsing error, not a quota issue
+
+            # If all models failed or got exhausted
+            if not ai_data:
+                print("  [X] All models exhausted or failed. Cooling down for 60 seconds...")
+                time.sleep(60)
+                continue # Skip this article and move to the next feed
 
             # Build Final Content with Internal Links
             related_html = get_related_posts_html(feed_info['category_ids'][0])
@@ -166,7 +183,7 @@ def run_aggregator():
                 print(f"WordPress Error: {wp_res.status_code}")
 
         except Exception as e:
-            print(f"Error processing {feed_info['name']}: {e}")
+            print(f"General Error processing {feed_info['name']}: {e}")
 
         print("Pausing for 30 seconds...")
         time.sleep(30)
