@@ -19,7 +19,7 @@ WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz" 
 
-GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
+GEMINI_API_KEY = "AIzaSyAXs41jJKViuIxZUetmWM0jU_XIspGV4yI"
 JSON_KEY_FILE = "service_account.json" 
 
 client = genai.Client(api_key=GEMINI_API_KEY)
