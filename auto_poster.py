@@ -98,7 +98,7 @@ def ping_google_indexing(url):
         print(f"Google Indexing API: Successfully pinged {url}")
     except Exception as e:
         print(f"Google Indexing API Error: {e}")
-        
+
 # ==========================================
 # 3. HELPER FUNCTIONS (IMAGES & TAGS)
 # ==========================================
@@ -137,6 +137,7 @@ def get_or_create_tags(tag_names):
 # ==========================================
 # 4. FETCH, REWRITE, AND POST
 # ==========================================
+#
 def run_aggregator():
     print("\nStarting SEO-Optimized News Sweep...")
     
