@@ -3,3 +3,4 @@ feedparser
 google-genai
 google-api-python-client
 google-auth
+pytrends
