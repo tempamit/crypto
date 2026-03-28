@@ -24,8 +24,8 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # THE CASCADING FALLBACK LIST
 FALLBACK_MODELS = [
-    "gemini-2.5-flash-lite",
     "gemini-1.5-flash",
+    "gemini-2.5-flash-lite",
     "gemini-1.5-flash-8b"
 ]
 
