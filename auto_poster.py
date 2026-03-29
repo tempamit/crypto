@@ -13,7 +13,7 @@ from googleapiclient.discovery import build
 from PIL import Image
 
 # ==========================================
-# 1. YOUR CONFIGURATION
+# 1. YOUR CONFIGURATION #
 # ==========================================
 WP_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/posts"
 WP_MEDIA_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/media"
