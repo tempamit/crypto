@@ -303,7 +303,7 @@ def run_aggregator():
         except Exception as e:
             print(f"General Error processing {feed_info['name']}: {e}")
 
-        time.sleep(120)
+        time.sleep(300)
 
 if __name__ == "__main__":
     while True:
