@@ -24,7 +24,7 @@ WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz"
 
 GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
 JSON_KEY_FILE = "service_account.json" 
-DB_FILE = "processed_urls.db" # The new local memory file
+DB_FILE = "processed_urls.db" 
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -38,6 +38,23 @@ FALLBACK_MODELS = [
     "gemini-3.1-flash-lite-preview",
     "gemini-3.1-pro-preview"
 ]
+
+# Map your WP Category IDs to their names so the AI can route articles dynamically
+WP_CATEGORIES = {
+    1: "Uncategorized",
+    2: "Movies",
+    3: "Music",
+    4: "Celebrities",
+    5: "Lifestyle",
+    6: "Global",
+    7: "Bollywood",
+    8: "Hollywood",
+    56: "OTT",
+    57: "Gaming",
+    58: "Anime",
+    59: "K-Pop",
+    60: "Tech"
+}
 
 # ==========================================
 # 2. INFRASTRUCTURE & HELPER FUNCTIONS
@@ -83,7 +100,7 @@ def article_exists_in_wp(title, original_url):
             for post in res.json():
                 wp_clean = clean_for_comparison(post['title']['rendered'])
                 if target_clean == wp_clean:
-                    mark_url_processed(original_url) # Save to local DB so we never ask WP again
+                    mark_url_processed(original_url) 
                     return True
     except Exception as e:
         print(f"  [!] WP check error: {e}")
@@ -95,19 +112,16 @@ def upload_optimized_image_to_wp(image_url, article_title):
         res = requests.get(image_url, timeout=10)
         if res.status_code != 200: return None
         
-        # Open with Pillow and convert to RGB (removes transparency if PNG)
         img = Image.open(BytesIO(res.content))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
             
-        # Resize if width is larger than 1200px (standardizes all images)
         max_width = 1200
         if img.width > max_width:
             ratio = max_width / img.width
             new_height = int(img.height * ratio)
             img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
         
-        # Compress and convert to WEBP
         buffer = BytesIO()
         img.save(buffer, format="WEBP", quality=80)
         img_data = buffer.getvalue()
@@ -171,12 +185,19 @@ def get_or_create_tags(tag_names):
 FEEDS = [
     {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
     {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
-    {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]}
-    # Add your other feeds here
+    {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]},
+    {"name": "BBC Entertainment (Global)", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", "category_ids": [6]},
+    {"name": "NME (Global Music)", "url": "https://www.nme.com/news/music/feed", "category_ids": [3, 6]},
+    {"name": "E! Online Top Stories (Lifestyle)", "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", "category_ids": [4, 5]},
+    {"name": "Hindustan Times (OTT & Web Series)", "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", "category_ids": [56]},
+    {"name": "IGN (Global Gaming & Esports)", "url": "https://feeds.ign.com/ign/games-all", "category_ids": [57]},
+    {"name": "Anime News Network (Anime & Manga)", "url": "https://www.animenewsnetwork.com/news/rss.xml", "category_ids": [58]},
+    {"name": "Soompi (K-Pop & K-Drama)", "url": "https://www.soompi.com/feed", "category_ids": [59, 3]},
+    {"name": "The Verge (Entertainment Tech)", "url": "https://www.theverge.com/rss/index.xml", "category_ids": [60]}
 ]
 
 def run_aggregator():
-    init_db() # Ensure database exists
+    init_db() 
     print("\nStarting Global SEO News Sweep...")
     
     live_trends = get_live_trends()
@@ -209,18 +230,21 @@ def run_aggregator():
             Title: {original_title}
             Summary: {summary}
             
-            SEO Instructions:
+            SEO & Categorization Instructions:
             1. Naturally weave some of these trending keywords into the text if relevant: {live_trends}.
-            2. Start the article_html with a quick bulleted Table of Contents with jump links (e.g., <a href="#section1">).
-            3. Use <h2> tags with matching IDs (e.g., <h2 id="section1">) to divide the content.
+            2. Start the article_html with a quick bulleted Table of Contents with jump links.
+            3. Use <h2> tags with matching IDs to divide the content.
             4. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json"> tags.
+            5. Categorization: Review this list of my website categories: {WP_CATEGORIES}. 
+               Select the 1 or 2 most appropriate Category IDs for this specific article.
 
             MANDATORY: Return ONLY a valid JSON object. Escape double quotes correctly.
             Structure:
             {{
-              "article_html": "HTML post starting with TOC, followed by content, ending with the schema <script> block",
+              "article_html": "HTML post starting with TOC, followed by content, ending with schema block",
               "meta_description": "150-char SEO snippet",
-              "tags": ["trending_keyword1", "trending_keyword2"]
+              "tags": ["trending_keyword1", "trending_keyword2"],
+              "category_ids": [integer_id1, integer_id2]
             }}
             """
             
@@ -241,10 +265,13 @@ def run_aggregator():
                 time.sleep(60)
                 continue 
 
-            related_html = get_related_posts_html(feed_info['category_ids'][0])
+            # AI dynamically chooses categories, falls back to feed default if it fails
+            chosen_categories = ai_data.get('category_ids', feed_info.get('category_ids', [2]))
+            print(f"  [~] AI assigned categories: {chosen_categories}")
+
+            related_html = get_related_posts_html(chosen_categories[0] if chosen_categories else 2)
             final_content = ai_data['article_html'] + related_html
 
-            # --- USE THE NEW IMAGE OPTIMIZER ---
             media_id = upload_optimized_image_to_wp(image_url, original_title) if image_url else None
             tag_ids = get_or_create_tags(ai_data['tags'])
 
@@ -253,7 +280,7 @@ def run_aggregator():
                 "content": final_content,
                 "excerpt": ai_data['meta_description'],
                 "status": "publish",
-                "categories": feed_info['category_ids'],
+                "categories": chosen_categories,
                 "tags": tag_ids
             }
             if media_id: post_payload['featured_media'] = media_id
@@ -263,7 +290,7 @@ def run_aggregator():
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
                 print(f"  [+] Success! Article Live: {new_url}")
-                mark_url_processed(article_link) # Save to SQLite permanently
+                mark_url_processed(article_link) 
                 ping_google_indexing(new_url)
             else:
                 print(f"  [!] WordPress Error: {wp_res.status_code}")
@@ -271,10 +298,10 @@ def run_aggregator():
         except Exception as e:
             print(f"General Error processing {feed_info['name']}: {e}")
 
-        time.sleep(15)
+        time.sleep(120)
 
 if __name__ == "__main__":
     while True:
         run_aggregator()
         print("\nSweep Complete. Sleeping for 2 hours...")
-        time.sleep(7200) # Increased to 2 hours to protect free AI limits
+        time.sleep(7200)
