@@ -15,12 +15,12 @@ from PIL import Image
 # ==========================================
 # 1. YOUR CONFIGURATION #
 # ==========================================
-WP_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/posts"
-WP_MEDIA_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/media"
-WP_TAGS_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/tags"
+WP_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/posts"
+WP_MEDIA_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/media"
+WP_TAGS_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/tags"
 
 WP_USER = "adminipds"
-WP_APP_PASSWORD = "fwjS Kt1y aHsC iTx4 jxtA EIvl" 
+WP_APP_PASSWORD = "IEtw OMiW Jtjp JzW1 CypZ 16UK" 
 
 GEMINI_API_KEY = "AIzaSyDs4cQA6ln7G7tOmaafKozc_Z9pUSxfji4"
 JSON_KEY_FILE = "service_account.json" 
