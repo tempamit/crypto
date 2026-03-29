@@ -28,7 +28,12 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash"
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite"
+    "gemini-1.5-flash-latest",
+    "gemini-3-flash-previ",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview"
 ]
 
 # SESSION MEMORY: Prevents rapid-fire duplicates if WP cache is slow
