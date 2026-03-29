@@ -218,30 +218,31 @@ def run_aggregator():
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
-            # --- THE ULTIMATE ANTI-ROBOTIC SEO PROMPT ---
+            # --- THE "INFORMATION GAIN" SEO PROMPT ---
+            # --- THE "ENTITY HUB & INFORMATION GAIN" SEO PROMPT ---
             prompt = f"""
-            You are an elite, human-like SEO journalist. Rewrite this news story into a highly engaging, 300-word article.
+            You are an elite, highly opinionated industry analyst and senior journalist. Your job is not just to report the news, but to explain WHY it matters.
             Title: {original_title}
             Summary: {summary}
             
             ANTI-ROBOTIC & SEO INSTRUCTIONS:
-            1. Humanize the text: Use high burstiness (mix very short, punchy sentences with longer, complex ones). AVOID cliché AI phrases like "In a surprising turn of events," "Delving into," or "It's important to note."
-            2. Format: NEVER use <h1> tags. Use strictly <h2> and <h3> tags for hierarchy.
-            3. Keyword Injection: Weave these trending keywords naturally: {live_trends}.
-            4. Internal Linking: Contextually hyperlink 1 or 2 of these recent articles directly inside your body paragraphs using natural anchor text:
+            1. Information Gain (CRITICAL): Include a dedicated <h3> section titled "The Big Picture" or "Why It Matters" where you provide historical context, industry impact, or forward-looking analysis based on your knowledge of the topic.
+            2. Humanize the text: Use high burstiness (mix very short, punchy sentences with longer, complex ones). AVOID cliché AI phrases entirely.
+            3. Format: NEVER use <h1> tags. Use strictly <h2> and <h3> tags for hierarchy. Start the article_html with a quick bulleted Table of Contents with jump links.
+            4. Entity Tagging (CRITICAL): Extract 3 to 5 highly specific Proper Nouns (Entities) from the article to use as tags. Examples: "Ranveer Singh", "PlayStation 5", "Federal Reserve", "Dhurandhar 2". DO NOT use generic tags like "Bollywood" or "Gaming".
+            5. Internal Linking: Contextually hyperlink 1 or 2 of these recent articles directly inside your body paragraphs using natural anchor text:
                {recent_posts}
-            5. Start the article_html with a quick bulleted Table of Contents with jump links.
-            6. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json">.
+            6. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json"> tags.
             7. Generate a 10-word, highly descriptive Alt Text for the featured image.
             8. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
 
             MANDATORY: Return ONLY a valid JSON object. Escape double quotes correctly.
             Structure:
             {{
-              "article_html": "HTML post starting with TOC, followed by content containing the internal links, ending with schema block",
-              "meta_description": "150-char SEO snippet",
+              "article_html": "HTML post starting with TOC, followed by the news report, the analytical 'Why It Matters' section, internal links woven in, ending with the schema block",
+              "meta_description": "150-char SEO snippet that teases the analysis, not just the facts",
               "alt_text": "10 word descriptive image alt text",
-              "tags": ["trending_keyword1", "trending_keyword2"],
+              "tags": ["Specific Person", "Specific Product/Movie", "Specific Organization"],
               "category_ids": [integer_id1, integer_id2]
             }}
             """
