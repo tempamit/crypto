@@ -15,16 +15,16 @@ from PIL import Image
 # ==========================================
 # 1. YOUR CONFIGURATION
 # ==========================================
-WP_URL = "https://news.ipds.cloud/wp-json/wp/v2/posts"
-WP_MEDIA_URL = "https://news.ipds.cloud/wp-json/wp/v2/media"
-WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"
+WP_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/posts"
+WP_MEDIA_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/media"
+WP_TAGS_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/tags"
 
 WP_USER = "adminipds"
-WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz" 
+WP_APP_PASSWORD = "fwjS Kt1y aHsC iTx4 jxtA EIvl" 
 
 GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
 JSON_KEY_FILE = "service_account.json" 
-DB_FILE = "processed_urls.db" 
+DB_FILE = "crypto_processed.db" # CRITICAL: Renamed so it doesn't conflict
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -40,19 +40,11 @@ FALLBACK_MODELS = [
 ]
 
 WP_CATEGORIES = {
-    1: "Uncategorized",
-    2: "Movies",
-    3: "Music",
-    4: "Celebrities",
-    5: "Lifestyle",
-    6: "Global",
-    7: "Bollywood",
-    8: "Hollywood",
-    56: "OTT",
-    57: "Gaming",
-    58: "Anime",
-    59: "K-Pop",
-    60: "Tech"
+    2: "Bitcoin & Ethereum",
+    3: "Altcoins & Tokens",
+    4: "Web3 & AI",
+    5: "Market Analysis",
+    6: "Regulation & Policy"
 }
 
 # ==========================================
@@ -175,22 +167,11 @@ def get_or_create_tags(tag_names):
 # ==========================================
 
 FEEDS = [
-    {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
-    {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
-    # Regional Movies & General Indian Entertainment
-    {"name": "News18 Movies", "url": "https://www.news18.com/rss/movies.xml", "category_ids": [2, 7]},
-    {"name": "Indian Express Entertainment", "url": "https://indianexpress.com/section/entertainment/feed/", "category_ids": [2, 4]},
-    #  {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]},
-      # {"name": "BBC Entertainment (Global)", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", "category_ids": [6]},
-    #  {"name": "NME (Global Music)", "url": "https://www.nme.com/news/music/feed", "category_ids": [3, 6]},
-    # {"name": "E! Online Top Stories (Lifestyle)", "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", "category_ids": [4, 5]},
-    {"name": "Hindustan Times (OTT & Web Series)", "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", "category_ids": [56]},
-     # {"name": "IGN (Global Gaming & Esports)", "url": "https://feeds.ign.com/ign/games-all", "category_ids": [57]},
-     #  {"name": "Anime News Network (Anime & Manga)", "url": "https://www.animenewsnetwork.com/news/rss.xml", "category_ids": [58]},
-    #  {"name": "Soompi (K-Pop & K-Drama)", "url": "https://www.soompi.com/feed", "category_ids": [59, 3]},
-     #  {"name": "The Verge (Entertainment Tech)", "url": "https://www.theverge.com/rss/index.xml", "category_ids": [60]}
-    # Television & Daily Soaps (Massive Indian Search Volume)
-    {"name": "Times of India TV", "url": "https://timesofindia.indiatimes.com/rssfeeds/65289941.cms", "category_ids": [4, 56]}
+    {"name": "CoinDesk (Markets)", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "category_ids": [2, 5]},
+    {"name": "CoinTelegraph (Top News)", "url": "https://cointelegraph.com/rss", "category_ids": [2, 3]},
+    {"name": "Decrypt (Web3 & AI)", "url": "https://decrypt.co/feed", "category_ids": [4]},
+    {"name": "CryptoSlate (Altcoins)", "url": "https://cryptoslate.com/feed/", "category_ids": [3, 5]},
+    {"name": "NewsBTC (Analysis)", "url": "https://www.newsbtc.com/feed/", "category_ids": [5, 2]}
 ]
 
 def run_aggregator():
@@ -225,29 +206,38 @@ def run_aggregator():
 
             # --- THE "INFORMATION GAIN" SEO PROMPT ---
             # --- THE "ENTITY HUB & INFORMATION GAIN" SEO PROMPT ---
+            # --- THE CRYPTO QUANT ANALYST PROMPT ---
             prompt = f"""
-            You are an elite, highly opinionated industry analyst and senior journalist. Your job is not just to report the news, but to explain WHY it matters.
-            Title: {original_title}
-            Summary: {summary}
+            You are a cynical, veteran quantitative crypto analyst who has survived three bear markets. 
+            You are reviewing this raw news feed. Write a sharp, highly technical, 300-word market update.
             
-            ANTI-ROBOTIC & SEO INSTRUCTIONS:
-            1. Information Gain (CRITICAL): Include a dedicated <h3> section titled "The Big Picture" or "Why It Matters" where you provide historical context, industry impact, or forward-looking analysis based on your knowledge of the topic.
-            2. Humanize the text: Use high burstiness (mix very short, punchy sentences with longer, complex ones). AVOID cliché AI phrases entirely.
-            3. Format: NEVER use <h1> tags. Use strictly <h2> and <h3> tags for hierarchy. Start the article_html with a quick bulleted Table of Contents with jump links.
-            4. Entity Tagging (CRITICAL): Extract 3 to 5 highly specific Proper Nouns (Entities) from the article to use as tags. Examples: "Ranveer Singh", "PlayStation 5", "Federal Reserve", "Dhurandhar 2". DO NOT use generic tags like "Bollywood" or "Gaming".
-            5. Internal Linking: Contextually hyperlink 1 or 2 of these recent articles directly inside your body paragraphs using natural anchor text:
+            News Title: {original_title}
+            Raw Data: {summary}
+            
+            STRICT "HUMAN-TOUCH" INSTRUCTIONS (CRITICAL):
+            1. Ban List: YOU MUST NEVER USE the following words or phrases: "delving into", "in conclusion", "ever-evolving", "a testament to", "crucial", "vital", "surprising turn of events", "navigating", "landscape".
+            2. Tone: Write like a Wall Street trader speaking to other traders. Use high burstiness (very short, punchy sentences mixed with data-heavy analysis). Be direct. No fluff. 
+            
+            ALGORITHMIC RESEARCH & EXPERT EDGE:
+            Divide the article_html into these exact sections using strictly <h2> tags (NEVER use <h1>):
+            - <h2>The Catalyst</h2>: State exactly what happened in 2-3 sentences. No filler.
+            - <h2>The On-Chain Reality</h2>: Synthesize this news. What is the actual macro-economic or technical impact? (e.g., liquidity, support/resistance, network hash rates, ETF flows).
+            - <h2>The Bull & Bear Case</h2>: Use a <ul> bulleted list to give one reason this is bullish (The Long Play), and one reason it is a trap (The Short Risk).
+            
+            3. Keyword & Link Injection: Weave these live trends naturally: {live_trends}. Contextually hyperlink 1 or 2 of these recent articles using natural anchor text:
                {recent_posts}
-            6. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json"> tags.
-            7. Generate a 10-word, highly descriptive Alt Text for the featured image.
-            8. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
+            4. Start the article_html with a quick bulleted Table of Contents with jump links to the 3 H2 sections.
+            5. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json">.
+            6. Generate a 10-word, highly descriptive Alt Text for the featured image (focus on charts, tokens, or executives).
+            7. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
 
             MANDATORY: Return ONLY a valid JSON object. Escape double quotes correctly.
             Structure:
             {{
-              "article_html": "HTML post starting with TOC, followed by the news report, the analytical 'Why It Matters' section, internal links woven in, ending with the schema block",
-              "meta_description": "150-char SEO snippet that teases the analysis, not just the facts",
+              "article_html": "HTML post starting with TOC, followed by the 3 H2 sections, ending with the schema block",
+              "meta_description": "150-char SEO snippet focused on market impact and price action",
               "alt_text": "10 word descriptive image alt text",
-              "tags": ["Specific Person", "Specific Product/Movie", "Specific Organization"],
+              "tags": ["Exact Token Name", "Specific Exchange", "Key Figure"],
               "category_ids": [integer_id1, integer_id2]
             }}
             """
