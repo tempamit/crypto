@@ -8,6 +8,7 @@ from urllib.parse import quote
 from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from pytrends.request import TrendReq
 
 # ==========================================
 # 1. YOUR CONFIGURATION
@@ -19,46 +20,58 @@ WP_TAGS_URL = "https://news.ipds.cloud/wp-json/wp/v2/tags"
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz" 
 
-GEMINI_API_KEY = "AIzaSyAXs41jJKViuIxZUetmWM0jU_XIspGV4yI"
+GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
 JSON_KEY_FILE = "service_account.json" 
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==========================================
-# 2. THE CASCADING FALLBACK LIST
-# ==========================================
-# Using the most stable, active models to avoid 404 errors
 FALLBACK_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite"
-    "gemini-1.5-flash-latest",
-    "gemini-3-flash-previ",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-pro-preview"
+    "gemini-2.0-flash"
 ]
 
+# SESSION MEMORY: Prevents rapid-fire duplicates if WP cache is slow
+SESSION_PROCESSED_URLS = set()
+
 # ==========================================
-# 3. HELPER FUNCTIONS
+# 2. ADVANCED HELPER FUNCTIONS
 # ==========================================
 
-def article_exists_in_wp(title):
-    """Checks WordPress to see if an article with this title is already published."""
+def clean_for_comparison(text):
+    """Strips all punctuation, spaces, and special chars for a strict raw-text match."""
+    return re.sub(r'[^a-zA-Z0-9]', '', html.unescape(text)).lower()
+
+def article_exists_in_wp(title, original_url):
+    """Bulletproof duplicate checker using alphanumeric matching."""
+    if original_url in SESSION_PROCESSED_URLS:
+        return True # We literally just posted this
+        
     try:
-        # Search WP for the exact title
-        search_url = f"{WP_URL}?search={quote(title)}&_fields=title"
-        res = requests.get(search_url, auth=(WP_USER, WP_APP_PASSWORD))
+        # Fetch the latest 20 posts to check against, avoiding WP's fuzzy search
+        res = requests.get(f"{WP_URL}?per_page=20&_fields=title", auth=(WP_USER, WP_APP_PASSWORD))
         if res.status_code == 200:
             posts = res.json()
+            target_clean = clean_for_comparison(title)
+            
             for post in posts:
-                # Clean up WP's HTML formatting to do a direct text comparison
-                wp_title = html.unescape(post['title']['rendered']).strip().lower()
-                if wp_title == title.strip().lower():
+                wp_clean = clean_for_comparison(post['title']['rendered'])
+                if target_clean == wp_clean:
                     return True
     except Exception as e:
-        print(f"  [!] Error checking WP for duplicates: {e}")
+        print(f"  [!] Duplicate check error: {e}")
     return False
+
+def get_live_trends():
+    """Fetches real-time Google Trends for India to inject as LSI keywords."""
+    try:
+        pytrend = TrendReq(hl='en-IN', tz=330) # India timezone
+        trending_searches_df = pytrend.trending_searches(pn='india')
+        trends = trending_searches_df[0].tolist()[:5]
+        return ", ".join(trends)
+    except Exception as e:
+        print(f"  [!] Pytrends warning: {e}. Using static LSI keywords.")
+        return "latest updates, breaking news, trending online, exclusive details, viral story"
 
 def ping_google_indexing(url):
     try:
@@ -67,23 +80,20 @@ def ping_google_indexing(url):
         service = build("indexing", "v3", credentials=credentials)
         body = {"url": url, "type": "URL_UPDATED"}
         service.urlNotifications().publish(body=body).execute()
-        print(f"Google Indexing API: Successfully pinged {url}")
+        print(f"  [+] Google Indexing API: Pung {url}")
     except Exception as e:
-        print(f"Google Indexing API Error: {e}")
+        pass
 
 def get_related_posts_html(category_id):
     try:
         params = {"categories": category_id, "per_page": 3, "status": "publish"}
         res = requests.get(WP_URL, params=params)
-        if res.status_code == 200:
-            posts = res.json()
-            if not posts: return ""
-            html = "<br><hr><h3>Related News You Might Like:</h3><ul>"
-            for p in posts:
-                html += f'<li><a href="{p["link"]}">{p["title"]["rendered"]}</a></li>'
-            html += "</ul>"
-            return html
-    except: return ""
+        if res.status_code == 200 and res.json():
+            html_out = "<br><hr><h3>Related News You Might Like:</h3><ul>"
+            for p in res.json():
+                html_out += f'<li><a href="{p["link"]}">{p["title"]["rendered"]}</a></li>'
+            return html_out + "</ul>"
+    except: pass
     return ""
 
 def upload_image_to_wp(image_url, article_title):
@@ -107,25 +117,23 @@ def get_or_create_tags(tag_names):
     return tag_ids
 
 # ==========================================
-# 4. MAIN ENGINE
+# 3. MAIN ENGINE
 # ==========================================
 
 FEEDS = [
     {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
     {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
-    {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]},
-    {"name": "BBC Entertainment (Global)", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", "category_ids": [6]},
-    {"name": "NME (Global Music)", "url": "https://www.nme.com/news/music/feed", "category_ids": [3, 6]},
-    {"name": "E! Online Top Stories (Lifestyle)", "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml", "category_ids": [4, 5]},
-    {"name": "Hindustan Times (OTT & Web Series)", "url": "https://www.hindustantimes.com/feeds/rss/entertainment/web-series/rssfeed.xml", "category_ids": [56]},
-    {"name": "IGN (Global Gaming & Esports)", "url": "https://feeds.ign.com/ign/games-all", "category_ids": [57]},
-    {"name": "Anime News Network (Anime & Manga)", "url": "https://www.animenewsnetwork.com/news/rss.xml", "category_ids": [58]},
-    {"name": "Soompi (K-Pop & K-Drama)", "url": "https://www.soompi.com/feed", "category_ids": [59, 3]},
-    {"name": "The Verge (Entertainment Tech)", "url": "https://www.theverge.com/rss/index.xml", "category_ids": [60]}
+    {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]}
+    # Add your other feeds back here...
 ]
 
 def run_aggregator():
     print("\nStarting Global SEO News Sweep...")
+    
+    # 1. Fetch live trends for this cycle
+    live_trends = get_live_trends()
+    print(f"  [~] Live Trends Hooked: {live_trends}")
+
     for feed_info in FEEDS:
         print(f"\n--- Checking: {feed_info['name']} ---")
         try:
@@ -134,11 +142,11 @@ def run_aggregator():
             
             latest = feed.entries[0]
             original_title = latest.title
+            article_link = latest.link
 
-            # --- THE DUPLICATE CHECKER ---
-            if article_exists_in_wp(original_title):
-                print(f"  [✓] Skipping: Already published ('{original_title}')")
-                time.sleep(5) # Small pause to not overwhelm the server, then skip to next feed
+            # --- THE NEW DUPLICATE CHECKER ---
+            if article_exists_in_wp(original_title, article_link):
+                print(f"  [✓] Skipping: Already published ('{original_title[:30]}...')")
                 continue
 
             summary = getattr(latest, 'summary', original_title)
@@ -150,22 +158,27 @@ def run_aggregator():
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
+            # --- ADVANCED SEO PROMPT ---
             prompt = f"""
-            You are a viral news writer. Rewrite this news into a 200-word conversational post. 
+            You are an elite SEO viral news writer. Rewrite this news into a highly engaging, 300-word conversational post. 
             Title: {original_title}
             Summary: {summary}
+            
+            SEO Instructions:
+            1. Naturally weave some of these trending keywords into the text if relevant: {live_trends}.
+            2. Start the article_html with a quick bulleted Table of Contents with jump links (e.g., <a href="#section1">).
+            3. Use <h2> tags with matching IDs (e.g., <h2 id="section1">) to divide the content.
+            4. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json"> tags.
 
-            MANDATORY: Return ONLY a valid JSON object. 
-            Escape all double quotes within strings using a backslash.
+            MANDATORY: Return ONLY a valid JSON object. Escape double quotes correctly.
             Structure:
             {{
-              "article_html": "HTML post with <p> and <strong> tags",
+              "article_html": "HTML post starting with TOC, followed by content, ending with the schema <script> block",
               "meta_description": "150-char SEO snippet",
               "tags": ["trending_keyword1", "trending_keyword2"]
             }}
             """
             
-            # --- THE FALLBACK LOGIC ---
             ai_data = None
             for model_name in FALLBACK_MODELS:
                 try:
@@ -173,15 +186,14 @@ def run_aggregator():
                     raw_text = response.text.strip()
                     raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
                     ai_data = json.loads(raw_text)
-                    break # Success! Break out of the fallback loop
-                
+                    break 
                 except Exception as e:
-                    print(f"  [!] Error with {model_name}: {e}. Trying next model...")
+                    print(f"  [!] Error with {model_name}: {e}. Trying next...")
                     continue 
 
             if not ai_data:
-                print("  [X] All models exhausted. Cooling down for 5 minutes to reset quotas...")
-                time.sleep(300) # Increased cooldown to 5 minutes to actually let free quotas reset
+                print("  [X] Models exhausted. Cooling down...")
+                time.sleep(60)
                 continue 
 
             # Build Final Content
@@ -206,6 +218,7 @@ def run_aggregator():
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
                 print(f"  [+] Success! Article Live: {new_url}")
+                SESSION_PROCESSED_URLS.add(article_link) # Add to memory
                 ping_google_indexing(new_url)
             else:
                 print(f"  [!] WordPress Error: {wp_res.status_code}")
@@ -213,11 +226,11 @@ def run_aggregator():
         except Exception as e:
             print(f"General Error processing {feed_info['name']}: {e}")
 
-        print("Pausing for 120 seconds...")
         time.sleep(120)
 
 if __name__ == "__main__":
     while True:
         run_aggregator()
+        SESSION_PROCESSED_URLS.clear() # Clear memory every hour to prevent infinite RAM usage
         print("\nSweep Complete. Sleeping for 1 hour...")
         time.sleep(3600)
