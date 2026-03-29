@@ -4,11 +4,13 @@ import time
 import json
 import re
 import html
+import sqlite3
+from io import BytesIO
 from urllib.parse import quote
 from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from pytrends.request import TrendReq
+from PIL import Image
 
 # ==========================================
 # 1. YOUR CONFIGURATION
@@ -22,6 +24,7 @@ WP_APP_PASSWORD = "Jjkr amue uHw0 tGDx OCKu iJYz"
 
 GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
 JSON_KEY_FILE = "service_account.json" 
+DB_FILE = "processed_urls.db" # The new local memory file
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -29,79 +32,120 @@ FALLBACK_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
-    "gemini-2.0-flash-lite"
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash-latest",
-    "gemini-3-flash-previ",
+    "gemini-3-flash-preview",
     "gemini-3.1-flash-lite-preview",
     "gemini-3.1-pro-preview"
 ]
 
-# SESSION MEMORY: Prevents rapid-fire duplicates if WP cache is slow
-SESSION_PROCESSED_URLS = set()
+# ==========================================
+# 2. INFRASTRUCTURE & HELPER FUNCTIONS
+# ==========================================
 
-# ==========================================
-# 2. ADVANCED HELPER FUNCTIONS
-# ==========================================
+def init_db():
+    """Initializes the permanent local memory database."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS processed (url TEXT PRIMARY KEY)''')
+    conn.commit()
+    conn.close()
+
+def is_url_processed(url):
+    """Checks the local SQLite database (Instant, zero API cost)."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM processed WHERE url = ?", (url,))
+    result = c.fetchone()
+    conn.close()
+    return bool(result)
+
+def mark_url_processed(url):
+    """Saves the URL permanently so it is never checked again."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO processed (url) VALUES (?)", (url,))
+    conn.commit()
+    conn.close()
 
 def clean_for_comparison(text):
-    """Strips all punctuation, spaces, and special chars for a strict raw-text match."""
     return re.sub(r'[^a-zA-Z0-9]', '', html.unescape(text)).lower()
 
 def article_exists_in_wp(title, original_url):
-    """Bulletproof duplicate checker using alphanumeric matching."""
-    if original_url in SESSION_PROCESSED_URLS:
-        return True # We literally just posted this
+    """Hybrid check: Checks local DB first. If missing, checks WP."""
+    if is_url_processed(original_url):
+        return True
         
     try:
-        # Fetch the latest 20 posts to check against, avoiding WP's fuzzy search
         res = requests.get(f"{WP_URL}?per_page=20&_fields=title", auth=(WP_USER, WP_APP_PASSWORD))
         if res.status_code == 200:
-            posts = res.json()
             target_clean = clean_for_comparison(title)
-            
-            for post in posts:
+            for post in res.json():
                 wp_clean = clean_for_comparison(post['title']['rendered'])
                 if target_clean == wp_clean:
+                    mark_url_processed(original_url) # Save to local DB so we never ask WP again
                     return True
     except Exception as e:
-        print(f"  [!] Duplicate check error: {e}")
+        print(f"  [!] WP check error: {e}")
     return False
 
-def get_live_trends():
-    """Fetches real-time Google Trends for India using the official RSS feed."""
+def upload_optimized_image_to_wp(image_url, article_title):
+    """Downloads, resizes, compresses to WebP, and uploads the image."""
     try:
-        # Official Google Trends RSS for India
-        trends_url = "https://trends.google.com/trending/rss?geo=IN"
-        feed = feedparser.parse(trends_url)
+        res = requests.get(image_url, timeout=10)
+        if res.status_code != 200: return None
         
-        trends = []
-        # Grab the top 5 trending keywords
-        for entry in feed.entries[:5]:
-            trends.append(entry.title)
+        # Open with Pillow and convert to RGB (removes transparency if PNG)
+        img = Image.open(BytesIO(res.content))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
             
-        if trends:
-            return ", ".join(trends)
-        else:
-            raise Exception("Empty trends feed")
-    except Exception as e:
-        print(f"  [!] Trends RSS warning: {e}. Using static LSI keywords.")
-        return "latest updates, breaking news, trending online, exclusive details, viral story"
+        # Resize if width is larger than 1200px (standardizes all images)
+        max_width = 1200
+        if img.width > max_width:
+            ratio = max_width / img.width
+            new_height = int(img.height * ratio)
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
         
+        # Compress and convert to WEBP
+        buffer = BytesIO()
+        img.save(buffer, format="WEBP", quality=80)
+        img_data = buffer.getvalue()
+        
+        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
+        headers = {
+            "Content-Type": "image/webp", 
+            "Content-Disposition": f"attachment; filename={safe_name}.webp"
+        }
+        upload_res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
+        
+        if upload_res.status_code == 201: 
+            return upload_res.json()['id']
+    except Exception as e:
+        print(f"  [!] Image optimization error: {e}")
+    return None
+
+def get_live_trends():
+    try:
+        feed = feedparser.parse("https://trends.google.com/trending/rss?geo=IN")
+        trends = [entry.title for entry in feed.entries[:5]]
+        return ", ".join(trends) if trends else "latest updates, breaking news"
+    except Exception:
+        return "latest updates, breaking news, trending online"
+
 def ping_google_indexing(url):
     try:
         scopes = ["https://www.googleapis.com/auth/indexing"]
         credentials = service_account.Credentials.from_service_account_file(JSON_KEY_FILE, scopes=scopes)
         service = build("indexing", "v3", credentials=credentials)
-        body = {"url": url, "type": "URL_UPDATED"}
-        service.urlNotifications().publish(body=body).execute()
-        print(f"  [+] Google Indexing API: Pung {url}")
+        service.urlNotifications().publish(body={"url": url, "type": "URL_UPDATED"}).execute()
+        print(f"  [+] Google Indexing API: Pinged {url}")
     except Exception as e:
         pass
 
 def get_related_posts_html(category_id):
     try:
-        params = {"categories": category_id, "per_page": 3, "status": "publish"}
-        res = requests.get(WP_URL, params=params)
+        res = requests.get(WP_URL, params={"categories": category_id, "per_page": 3, "status": "publish"})
         if res.status_code == 200 and res.json():
             html_out = "<br><hr><h3>Related News You Might Like:</h3><ul>"
             for p in res.json():
@@ -109,16 +153,6 @@ def get_related_posts_html(category_id):
             return html_out + "</ul>"
     except: pass
     return ""
-
-def upload_image_to_wp(image_url, article_title):
-    try:
-        img_data = requests.get(image_url, timeout=10).content
-        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
-        headers = {"Content-Type": "image/jpeg", "Content-Disposition": f"attachment; filename={safe_name}.jpg"}
-        res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
-        if res.status_code == 201: return res.json()['id']
-    except: pass
-    return None
 
 def get_or_create_tags(tag_names):
     tag_ids = []
@@ -138,13 +172,13 @@ FEEDS = [
     {"name": "FilmiBeat Bollywood (India)", "url": "https://www.filmibeat.com/rss/feeds/bollywood-fb.xml", "category_ids": [7, 2]},
     {"name": "Times of India (Bollywood)", "url": "https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms", "category_ids": [7, 2]},
     {"name": "Variety Film (Hollywood)", "url": "https://variety.com/v/film/feed/", "category_ids": [8, 2]}
-    # Add your other feeds back here...
+    # Add your other feeds here
 ]
 
 def run_aggregator():
+    init_db() # Ensure database exists
     print("\nStarting Global SEO News Sweep...")
     
-    # 1. Fetch live trends for this cycle
     live_trends = get_live_trends()
     print(f"  [~] Live Trends Hooked: {live_trends}")
 
@@ -158,21 +192,18 @@ def run_aggregator():
             original_title = latest.title
             article_link = latest.link
 
-            # --- THE NEW DUPLICATE CHECKER ---
             if article_exists_in_wp(original_title, article_link):
                 print(f"  [✓] Skipping: Already published ('{original_title[:30]}...')")
                 continue
 
             summary = getattr(latest, 'summary', original_title)
             
-            # Find Image
             image_url = None
             if 'media_content' in latest: image_url = latest.media_content[0]['url']
             elif 'links' in latest:
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
-            # --- ADVANCED SEO PROMPT ---
             prompt = f"""
             You are an elite SEO viral news writer. Rewrite this news into a highly engaging, 300-word conversational post. 
             Title: {original_title}
@@ -210,11 +241,11 @@ def run_aggregator():
                 time.sleep(60)
                 continue 
 
-            # Build Final Content
             related_html = get_related_posts_html(feed_info['category_ids'][0])
             final_content = ai_data['article_html'] + related_html
 
-            media_id = upload_image_to_wp(image_url, original_title) if image_url else None
+            # --- USE THE NEW IMAGE OPTIMIZER ---
+            media_id = upload_optimized_image_to_wp(image_url, original_title) if image_url else None
             tag_ids = get_or_create_tags(ai_data['tags'])
 
             post_payload = {
@@ -232,7 +263,7 @@ def run_aggregator():
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
                 print(f"  [+] Success! Article Live: {new_url}")
-                SESSION_PROCESSED_URLS.add(article_link) # Add to memory
+                mark_url_processed(article_link) # Save to SQLite permanently
                 ping_google_indexing(new_url)
             else:
                 print(f"  [!] WordPress Error: {wp_res.status_code}")
@@ -240,11 +271,10 @@ def run_aggregator():
         except Exception as e:
             print(f"General Error processing {feed_info['name']}: {e}")
 
-        time.sleep(120)
+        time.sleep(15)
 
 if __name__ == "__main__":
     while True:
         run_aggregator()
-        SESSION_PROCESSED_URLS.clear() # Clear memory every hour to prevent infinite RAM usage
-        print("\nSweep Complete. Sleeping for 1 hour...")
-        time.sleep(3600)
+        print("\nSweep Complete. Sleeping for 2 hours...")
+        time.sleep(7200) # Increased to 2 hours to protect free AI limits
