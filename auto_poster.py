@@ -63,16 +63,25 @@ def article_exists_in_wp(title, original_url):
     return False
 
 def get_live_trends():
-    """Fetches real-time Google Trends for India to inject as LSI keywords."""
+    """Fetches real-time Google Trends for India using the official RSS feed."""
     try:
-        pytrend = TrendReq(hl='en-IN', tz=330) # India timezone
-        trending_searches_df = pytrend.trending_searches(pn='india')
-        trends = trending_searches_df[0].tolist()[:5]
-        return ", ".join(trends)
+        # Official Google Trends RSS for India
+        trends_url = "https://trends.google.com/trending/rss?geo=IN"
+        feed = feedparser.parse(trends_url)
+        
+        trends = []
+        # Grab the top 5 trending keywords
+        for entry in feed.entries[:5]:
+            trends.append(entry.title)
+            
+        if trends:
+            return ", ".join(trends)
+        else:
+            raise Exception("Empty trends feed")
     except Exception as e:
-        print(f"  [!] Pytrends warning: {e}. Using static LSI keywords.")
+        print(f"  [!] Trends RSS warning: {e}. Using static LSI keywords.")
         return "latest updates, breaking news, trending online, exclusive details, viral story"
-
+        
 def ping_google_indexing(url):
     try:
         scopes = ["https://www.googleapis.com/auth/indexing"]
