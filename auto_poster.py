@@ -22,7 +22,7 @@ WP_TAGS_URL = "https://crypto.ipds.cloud/wp-json/wp/v2/tags"
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "fwjS Kt1y aHsC iTx4 jxtA EIvl" 
 
-GEMINI_API_KEY = "AIzaSyCURIszps9ihHRA-CFap3xAHriZcJf2g6c"
+GEMINI_API_KEY = "AIzaSyCxVJ9JWH-AjLOqd4Fo_-NiWMiFyC_nWNU"
 JSON_KEY_FILE = "service_account.json" 
 DB_FILE = "crypto_processed.db" # CRITICAL: Renamed so it doesn't conflict
 
