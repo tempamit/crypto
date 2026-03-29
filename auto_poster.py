@@ -274,13 +274,18 @@ def run_aggregator():
             
             tag_ids = get_or_create_tags(ai_data.get('tags', []))
 
+            # --- UPDATED NATIVE SEO PAYLOAD ---
+            seo_description = ai_data.get('meta_description', '')
+            
             post_payload = {
                 "title": original_title,
                 "content": final_content,
-                "excerpt": ai_data.get('meta_description', ''),
+                "excerpt": seo_description, # Standard WP Fallback
                 "status": "publish",
                 "categories": chosen_categories,
-                "tags": tag_ids
+                "tags": tag_ids,
+                "_yoast_wpseo_metadesc": seo_description, # Injects directly into Yoast
+                "rank_math_description": seo_description  # Injects directly into Rank Math
             }
             if media_id: post_payload['featured_media'] = media_id
 
