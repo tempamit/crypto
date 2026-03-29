@@ -39,7 +39,6 @@ FALLBACK_MODELS = [
     "gemini-3.1-pro-preview"
 ]
 
-# Map your WP Category IDs to their names so the AI can route articles dynamically
 WP_CATEGORIES = {
     1: "Uncategorized",
     2: "Movies",
@@ -61,7 +60,6 @@ WP_CATEGORIES = {
 # ==========================================
 
 def init_db():
-    """Initializes the permanent local memory database."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS processed (url TEXT PRIMARY KEY)''')
@@ -69,7 +67,6 @@ def init_db():
     conn.close()
 
 def is_url_processed(url):
-    """Checks the local SQLite database (Instant, zero API cost)."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT 1 FROM processed WHERE url = ?", (url,))
@@ -78,7 +75,6 @@ def is_url_processed(url):
     return bool(result)
 
 def mark_url_processed(url):
-    """Saves the URL permanently so it is never checked again."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("INSERT OR IGNORE INTO processed (url) VALUES (?)", (url,))
@@ -89,38 +85,31 @@ def clean_for_comparison(text):
     return re.sub(r'[^a-zA-Z0-9]', '', html.unescape(text)).lower()
 
 def article_exists_in_wp(title, original_url):
-    """Hybrid check: Checks local DB first. If missing, checks WP."""
-    if is_url_processed(original_url):
-        return True
-        
+    if is_url_processed(original_url): return True
     try:
         res = requests.get(f"{WP_URL}?per_page=20&_fields=title", auth=(WP_USER, WP_APP_PASSWORD))
         if res.status_code == 200:
             target_clean = clean_for_comparison(title)
             for post in res.json():
-                wp_clean = clean_for_comparison(post['title']['rendered'])
-                if target_clean == wp_clean:
+                if target_clean == clean_for_comparison(post['title']['rendered']):
                     mark_url_processed(original_url) 
                     return True
-    except Exception as e:
-        print(f"  [!] WP check error: {e}")
+    except: pass
     return False
 
-def upload_optimized_image_to_wp(image_url, article_title):
-    """Downloads, resizes, compresses to WebP, and uploads the image."""
+def upload_optimized_image_to_wp(image_url, article_title, alt_text=""):
+    """Upgraded: Converts to WebP AND injects SEO Alt Text."""
     try:
         res = requests.get(image_url, timeout=10)
         if res.status_code != 200: return None
         
         img = Image.open(BytesIO(res.content))
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
+        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
             
         max_width = 1200
         if img.width > max_width:
             ratio = max_width / img.width
-            new_height = int(img.height * ratio)
-            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            img = img.resize((max_width, int(img.height * ratio)), Image.Resampling.LANCZOS)
         
         buffer = BytesIO()
         img.save(buffer, format="WEBP", quality=80)
@@ -134,7 +123,11 @@ def upload_optimized_image_to_wp(image_url, article_title):
         upload_res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
         
         if upload_res.status_code == 201: 
-            return upload_res.json()['id']
+            media_id = upload_res.json()['id']
+            # SECONDARY API CALL: Inject the SEO Alt Text into the database
+            if alt_text:
+                requests.post(f"{WP_MEDIA_URL}/{media_id}", json={"alt_text": alt_text}, auth=(WP_USER, WP_APP_PASSWORD))
+            return media_id
     except Exception as e:
         print(f"  [!] Image optimization error: {e}")
     return None
@@ -147,6 +140,17 @@ def get_live_trends():
     except Exception:
         return "latest updates, breaking news, trending online"
 
+def get_recent_posts_for_linking():
+    """Fetches the 3 newest WP articles to feed to the AI for internal linking."""
+    try:
+        res = requests.get(f"{WP_URL}?per_page=3&status=publish&_fields=title,link", auth=(WP_USER, WP_APP_PASSWORD))
+        if res.status_code == 200:
+            posts = res.json()
+            links_data = [f"- {p['title']['rendered']} (URL: {p['link']})" for p in posts]
+            return "\n".join(links_data)
+    except: pass
+    return "No recent posts available."
+
 def ping_google_indexing(url):
     try:
         scopes = ["https://www.googleapis.com/auth/indexing"]
@@ -154,19 +158,7 @@ def ping_google_indexing(url):
         service = build("indexing", "v3", credentials=credentials)
         service.urlNotifications().publish(body={"url": url, "type": "URL_UPDATED"}).execute()
         print(f"  [+] Google Indexing API: Pinged {url}")
-    except Exception as e:
-        pass
-
-def get_related_posts_html(category_id):
-    try:
-        res = requests.get(WP_URL, params={"categories": category_id, "per_page": 3, "status": "publish"})
-        if res.status_code == 200 and res.json():
-            html_out = "<br><hr><h3>Related News You Might Like:</h3><ul>"
-            for p in res.json():
-                html_out += f'<li><a href="{p["link"]}">{p["title"]["rendered"]}</a></li>'
-            return html_out + "</ul>"
     except: pass
-    return ""
 
 def get_or_create_tags(tag_names):
     tag_ids = []
@@ -201,6 +193,7 @@ def run_aggregator():
     print("\nStarting Global SEO News Sweep...")
     
     live_trends = get_live_trends()
+    recent_posts = get_recent_posts_for_linking() # Fetch internal links
     print(f"  [~] Live Trends Hooked: {live_trends}")
 
     for feed_info in FEEDS:
@@ -225,24 +218,29 @@ def run_aggregator():
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
 
+            # --- THE ULTIMATE ANTI-ROBOTIC SEO PROMPT ---
             prompt = f"""
-            You are an elite SEO viral news writer. Rewrite this news into a highly engaging, 300-word conversational post. 
+            You are an elite, human-like SEO journalist. Rewrite this news story into a highly engaging, 300-word article.
             Title: {original_title}
             Summary: {summary}
             
-            SEO & Categorization Instructions:
-            1. Naturally weave some of these trending keywords into the text if relevant: {live_trends}.
-            2. Start the article_html with a quick bulleted Table of Contents with jump links.
-            3. Use <h2> tags with matching IDs to divide the content.
-            4. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json"> tags.
-            5. Categorization: Review this list of my website categories: {WP_CATEGORIES}. 
-               Select the 1 or 2 most appropriate Category IDs for this specific article.
+            ANTI-ROBOTIC & SEO INSTRUCTIONS:
+            1. Humanize the text: Use high burstiness (mix very short, punchy sentences with longer, complex ones). AVOID cliché AI phrases like "In a surprising turn of events," "Delving into," or "It's important to note."
+            2. Format: NEVER use <h1> tags. Use strictly <h2> and <h3> tags for hierarchy.
+            3. Keyword Injection: Weave these trending keywords naturally: {live_trends}.
+            4. Internal Linking: Contextually hyperlink 1 or 2 of these recent articles directly inside your body paragraphs using natural anchor text:
+               {recent_posts}
+            5. Start the article_html with a quick bulleted Table of Contents with jump links.
+            6. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json">.
+            7. Generate a 10-word, highly descriptive Alt Text for the featured image.
+            8. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
 
             MANDATORY: Return ONLY a valid JSON object. Escape double quotes correctly.
             Structure:
             {{
-              "article_html": "HTML post starting with TOC, followed by content, ending with schema block",
+              "article_html": "HTML post starting with TOC, followed by content containing the internal links, ending with schema block",
               "meta_description": "150-char SEO snippet",
+              "alt_text": "10 word descriptive image alt text",
               "tags": ["trending_keyword1", "trending_keyword2"],
               "category_ids": [integer_id1, integer_id2]
             }}
@@ -265,20 +263,21 @@ def run_aggregator():
                 time.sleep(60)
                 continue 
 
-            # AI dynamically chooses categories, falls back to feed default if it fails
             chosen_categories = ai_data.get('category_ids', feed_info.get('category_ids', [2]))
             print(f"  [~] AI assigned categories: {chosen_categories}")
 
-            related_html = get_related_posts_html(chosen_categories[0] if chosen_categories else 2)
-            final_content = ai_data['article_html'] + related_html
-
-            media_id = upload_optimized_image_to_wp(image_url, original_title) if image_url else None
-            tag_ids = get_or_create_tags(ai_data['tags'])
+            final_content = ai_data['article_html'] 
+            
+            # Extract Alt Text and pass it to the Image Optimizer
+            alt_text = ai_data.get('alt_text', original_title)
+            media_id = upload_optimized_image_to_wp(image_url, original_title, alt_text) if image_url else None
+            
+            tag_ids = get_or_create_tags(ai_data.get('tags', []))
 
             post_payload = {
                 "title": original_title,
                 "content": final_content,
-                "excerpt": ai_data['meta_description'],
+                "excerpt": ai_data.get('meta_description', ''),
                 "status": "publish",
                 "categories": chosen_categories,
                 "tags": tag_ids
