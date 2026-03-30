@@ -1,3 +1,4 @@
+import os # Make sure this is at the top with your other imports
 import requests
 import feedparser
 import time
@@ -22,7 +23,9 @@ WP_TAGS_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/tags"
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "IEtw OMiW Jtjp JzW1 CypZ 16UK" 
 
-GEMINI_API_KEY = "AIzaSyBu8dpc1qUy0ELh0u4fCGNqwhuzSQPXcKE"
+# --- CHANGED: Hide the API Key from GitHub ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 JSON_KEY_FILE = "service_account.json" 
 DB_FILE = "crypto_processed.db" # CRITICAL: Renamed so it doesn't conflict
 
