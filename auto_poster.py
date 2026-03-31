@@ -155,6 +155,17 @@ def get_live_trends():
     else:
         return "global markets, breaking financial news, tech sector updates"
 
+def get_recent_posts_for_linking():
+    """Fetches the 3 newest WP articles to feed to the AI for internal linking."""
+    try:
+        res = requests.get(f"{WP_URL}?per_page=3&status=publish&_fields=title,link", auth=(WP_USER, WP_APP_PASSWORD))
+        if res.status_code == 200:
+            posts = res.json()
+            links_data = [f"- {p['title']['rendered']} (URL: {p['link']})" for p in posts]
+            return "\n".join(links_data)
+    except: pass
+    return "No recent posts available."
+
 def ping_google_indexing(url):
     try:
         scopes = ["https://www.googleapis.com/auth/indexing"]
