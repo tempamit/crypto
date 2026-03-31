@@ -16,12 +16,12 @@ from PIL import Image
 # ==========================================
 # 1. YOUR CONFIGURATION #
 # ==========================================
-WP_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/posts"
-WP_MEDIA_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/media"
-WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
+WP_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/posts"
+WP_MEDIA_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/media"
+WP_TAGS_URL = "https://crypto.ipds.cloud/index.php/wp-json/wp/v2/tags"
 
 WP_USER = "adminipds"
-WP_APP_PASSWORD = "9ppq BZkt 5wbj mEXf 7azk EPlM" 
+WP_APP_PASSWORD = "IEtw OMiW Jtjp JzW1 CypZ 16UK" 
 
 # --- CHANGED: Hide the API Key from GitHub ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
