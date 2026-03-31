@@ -231,41 +231,44 @@ def run_aggregator():
             # --- THE "ENTITY HUB & INFORMATION GAIN" SEO PROMPT ---
             # --- THE CRYPTO QUANT ANALYST PROMPT ---
             prompt = f"""
-            You are a cynical, veteran quantitative crypto analyst who has survived three bear markets. 
-            You are reviewing this raw news feed. Write a sharp, highly technical, 300-word market update.
-            
-            News Title: {original_title}
-            Raw Data: {summary}
-            
-            STRICT "HUMAN-TOUCH" INSTRUCTIONS (CRITICAL):
-            1. Ban List: YOU MUST NEVER USE the following words or phrases: "delving into", "in conclusion", "ever-evolving", "a testament to", "crucial", "vital", "surprising turn of events", "navigating", "landscape".
-            2. Tone: Write like a Wall Street trader speaking to other traders. Use high burstiness (very short, punchy sentences mixed with data-heavy analysis). Be direct. No fluff. 
-            
-            ALGORITHMIC RESEARCH & EXPERT EDGE:
-            Divide the article_html into these exact sections using strictly <h2> tags (NEVER use <h1>):
-            - <h2>The Catalyst</h2>: State exactly what happened in 2-3 sentences. No filler.
-            - <h2>The On-Chain Reality</h2>: Synthesize this news. What is the actual macro-economic or technical impact? (e.g., liquidity, support/resistance, network hash rates, ETF flows).
-            - <h2>The Bull & Bear Case</h2>: Use a <ul> bulleted list to give one reason this is bullish (The Long Play), and one reason it is a trap (The Short Risk).
-            
-            3. Keyword & Link Injection: Here are today's live global search trends: {live_trends}. 
-               ONLY use 1 or 2 of these trends IF you can make a brilliant, highly cynical market analogy. If the trends are celebrities, sports, or pop-culture that ruin the serious Wall Street tone, IGNORE THEM COMPLETELY.
-               Contextually hyperlink 1 or 2 of these recent articles using natural anchor text:
-               {recent_posts}
-            4. Start the article_html with a quick bulleted Table of Contents with jump links to the 3 H2 sections.
-            5. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json">.
-            6. Generate a 10-word, highly descriptive Alt Text for the featured image (focus on charts, tokens, or executives).
-            7. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
+        You are a cynical, veteran quantitative crypto analyst who has survived three bear markets. 
+        You are reviewing this raw news feed. Write a sharp, highly technical, 300-word market update.
+        
+        News Title: {original_title}
+        Raw Data: {summary}
+        
+        STRICT "HUMAN-TOUCH" INSTRUCTIONS (CRITICAL):
+        1. Ban List: YOU MUST NEVER USE the following words or phrases: "delving into", "in conclusion", "ever-evolving", "a testament to", "crucial", "vital", "surprising turn of events", "navigating", "landscape".
+        2. Tone: Write like a Wall Street trader speaking to other traders. Use high burstiness (very short, punchy sentences mixed with data-heavy analysis). Be direct. No fluff. 
+        
+        ALGORITHMIC RESEARCH & EXPERT EDGE:
+        Divide the article_html into these exact sections using strictly <h2> tags (NEVER use <h1>). Add id attributes to the <h2> tags for the Table of Contents:
+        - <h2 id="catalyst">The Catalyst</h2>: State exactly what happened in 2-3 sentences. No filler.
+        - <h2 id="on-chain">The On-Chain Reality</h2>: Synthesize this news. What is the actual macro-economic or technical impact? (e.g., liquidity, support/resistance, network hash rates, ETF flows).
+        - <h2 id="bull-bear">The Bull & Bear Case</h2>: Use a <ul> bulleted list to give one reason this is bullish (The Long Play), and one reason it is a trap (The Short Risk).
+        
+        3. Keyword & Link Injection: Here are today's live global search trends: {live_trends}. 
+           ONLY use 1 or 2 of these trends IF you can make a brilliant, highly cynical market analogy. If the trends are celebrities, sports, or pop-culture that ruin the serious Wall Street tone, IGNORE THEM COMPLETELY.
+           Contextually hyperlink 1 or 2 of these recent articles using natural anchor text:
+           {recent_posts}
+        4. Start the article_html with a quick bulleted Table of Contents with jump links (e.g., <a href="#catalyst">) to the 3 H2 sections.
+        5. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json">. Place this at the very end of the article_html. IMPORTANT: Escape double quotes inside the script block so it does not break the main JSON response.
+        6. Generate a 10-word, highly descriptive Alt Text for the featured image (focus on charts, tokens, or executives).
+        7. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
+        8. FOCUS KEYWORD: Generate a highly targeted, 2-to-4 word SEO focus keyword for this article.
 
-            MANDATORY: Return ONLY a valid JSON object. Escape double quotes correctly.
-            Structure:
-            {{
-              "article_html": "HTML post starting with TOC, followed by the 3 H2 sections, ending with the schema block",
-              "meta_description": "150-char SEO snippet focused on market impact and price action",
-              "alt_text": "10 word descriptive image alt text",
-              "tags": ["Exact Token Name", "Specific Exchange", "Key Figure"],
-              "category_ids": [integer_id1, integer_id2]
-            }}
-            """
+        MANDATORY: Return ONLY a valid JSON object. Do NOT wrap it in markdown formatting (no ```json). Escape double quotes correctly.
+        Structure:
+        {{
+          "title": "Your punchy, cynical headline",
+          "article_html": "HTML post starting with TOC, followed by the 3 H2 sections, ending with the schema block",
+          "meta_description": "150-char SEO snippet focused on market impact and price action",
+          "alt_text": "10 word descriptive image alt text",
+          "tags": ["Exact Token Name", "Specific Exchange", "Key Figure"],
+          "category_ids": [integer_id1, integer_id2],
+          "focus_keyword": "2-4 word SEO keyword"
+        }}
+        """
             
             ai_data = None
             for model_name in FALLBACK_MODELS:
@@ -295,8 +298,9 @@ def run_aggregator():
             
             tag_ids = get_or_create_tags(ai_data.get('tags', []))
 
-            # --- UPDATED NATIVE SEO PAYLOAD ---
+           # --- UPDATED NATIVE SEO PAYLOAD ---
             seo_description = ai_data.get('meta_description', '')
+            focus_keyword = ai_data.get('focus_keyword', '') # <-- NEW: Extract the keyword from Gemini
             
             post_payload = {
                 "title": original_title,
@@ -306,7 +310,10 @@ def run_aggregator():
                 "categories": chosen_categories,
                 "tags": tag_ids,
                 "_yoast_wpseo_metadesc": seo_description, # Injects directly into Yoast
-                "rank_math_description": seo_description  # Injects directly into Rank Math
+                "rank_math_description": seo_description, # Injects directly into Rank Math
+                "meta": {
+                    "rank_math_focus_keyword": focus_keyword  # <-- NEW: Injects Focus Keyword via our PHP snippet
+                }
             }
             if media_id: post_payload['featured_media'] = media_id
 
@@ -314,11 +321,11 @@ def run_aggregator():
             
             if wp_res.status_code == 201:
                 new_url = wp_res.json().get('link')
-                print(f"  [+] Success! Article Live: {new_url}")
+                print(f"  [+] Success! Article Live: {new_url} | Keyword: {focus_keyword}")
                 mark_url_processed(article_link) 
                 ping_google_indexing(new_url)
             else:
-                print(f"  [!] WordPress Error: {wp_res.status_code}")
+                print(f"  [!] WordPress Error: {wp_res.status_code} - {wp_res.text}")
 
         except Exception as e:
             print(f"General Error processing {feed_info['name']}: {e}")
