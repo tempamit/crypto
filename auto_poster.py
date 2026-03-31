@@ -12,6 +12,7 @@ from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from PIL import Image
+import random
 
 # ==========================================
 # 1. YOUR CONFIGURATION #
@@ -128,23 +129,31 @@ def upload_optimized_image_to_wp(image_url, article_title, alt_text=""):
     return None
 
 def get_live_trends():
-    try:
-        feed = feedparser.parse("https://trends.google.com/trending/rss?geo=IN")
-        trends = [entry.title for entry in feed.entries[:5]]
-        return ", ".join(trends) if trends else "latest updates, breaking news"
-    except Exception:
-        return "latest updates, breaking news, trending online"
+    """Pulls live Google search trends from a rotating list of global tier-1 countries."""
+    # Major global traffic hubs: United States, UK, Canada, Australia, Singapore, India, UAE
+    global_hubs = ["US", "GB", "CA", "AU", "SG", "IN", "AE"]
+    all_trends = []
 
-def get_recent_posts_for_linking():
-    """Fetches the 3 newest WP articles to feed to the AI for internal linking."""
-    try:
-        res = requests.get(f"{WP_URL}?per_page=3&status=publish&_fields=title,link", auth=(WP_USER, WP_APP_PASSWORD))
-        if res.status_code == 200:
-            posts = res.json()
-            links_data = [f"- {p['title']['rendered']} (URL: {p['link']})" for p in posts]
-            return "\n".join(links_data)
-    except: pass
-    return "No recent posts available."
+    # Randomly pick 2 countries per cycle to mix global traffic without spamming the RSS feed
+    selected_hubs = random.sample(global_hubs, 2)
+
+    for geo in selected_hubs:
+        try:
+            feed = feedparser.parse(f"https://trends.google.com/trending/rss?geo={geo}")
+            # Grab the top 3 trends from each of the two selected countries
+            trends = [entry.title for entry in feed.entries[:3]]
+            all_trends.extend(trends)
+        except Exception as e:
+            print(f"  [!] Trend fetch error for {geo}: {e}")
+            continue
+
+    if all_trends:
+        # Shuffle the mixed global trends and pick 5 to give the AI variety
+        random.shuffle(all_trends)
+        final_trends = all_trends[:5]
+        return ", ".join(final_trends)
+    else:
+        return "global markets, breaking financial news, tech sector updates"
 
 def ping_google_indexing(url):
     try:
@@ -227,7 +236,9 @@ def run_aggregator():
             - <h2>The On-Chain Reality</h2>: Synthesize this news. What is the actual macro-economic or technical impact? (e.g., liquidity, support/resistance, network hash rates, ETF flows).
             - <h2>The Bull & Bear Case</h2>: Use a <ul> bulleted list to give one reason this is bullish (The Long Play), and one reason it is a trap (The Short Risk).
             
-            3. Keyword & Link Injection: Weave these live trends naturally: {live_trends}. Contextually hyperlink 1 or 2 of these recent articles using natural anchor text:
+            3. Keyword & Link Injection: Here are today's live global search trends: {live_trends}. 
+               ONLY use 1 or 2 of these trends IF you can make a brilliant, highly cynical market analogy. If the trends are celebrities, sports, or pop-culture that ruin the serious Wall Street tone, IGNORE THEM COMPLETELY.
+               Contextually hyperlink 1 or 2 of these recent articles using natural anchor text:
                {recent_posts}
             4. Start the article_html with a quick bulleted Table of Contents with jump links to the 3 H2 sections.
             5. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json">.
