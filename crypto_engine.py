@@ -313,7 +313,7 @@ def run_aggregator():
                 "content": final_content,
                 "excerpt": seo_description, 
                 "status": "publish",
-                "author": AMIT_USER_ID,  # <--- CRITICAL: YOU MUST ADD THIS LINE
+                "author": WP_AUTHOR_ID,  # <--- CRITICAL: YOU MUST ADD THIS LINE
                 "categories": chosen_categories,
                 "tags": tag_ids,
                 "_yoast_wpseo_metadesc": seo_description, 
