@@ -24,6 +24,9 @@ WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "9ppq BZkt 5wbj mEXf 7azk EPlM" 
 
+# --- PUBLIC AUTHOR ID (Amit S. Loomba) ---
+WP_AUTHOR_ID = 3
+
 # --- CHANGED: Hide the API Key from GitHub ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -300,19 +303,23 @@ def run_aggregator():
 
            # --- UPDATED NATIVE SEO PAYLOAD ---
             seo_description = ai_data.get('meta_description', '')
-            focus_keyword = ai_data.get('focus_keyword', '') # <-- NEW: Extract the keyword from Gemini
-            
+            focus_keyword = ai_data.get('focus_keyword', '') 
+
+            # The ID for Amit S. Loomba
+            AMIT_USER_ID = 3
+
             post_payload = {
                 "title": original_title,
                 "content": final_content,
-                "excerpt": seo_description, # Standard WP Fallback
+                "excerpt": seo_description, 
                 "status": "publish",
+                "author": AMIT_USER_ID,  # <--- CRITICAL: YOU MUST ADD THIS LINE
                 "categories": chosen_categories,
                 "tags": tag_ids,
-                "_yoast_wpseo_metadesc": seo_description, # Injects directly into Yoast
-                "rank_math_description": seo_description, # Injects directly into Rank Math
+                "_yoast_wpseo_metadesc": seo_description, 
+                "rank_math_description": seo_description, 
                 "meta": {
-                    "rank_math_focus_keyword": focus_keyword  # <-- NEW: Injects Focus Keyword via our PHP snippet
+                "rank_math_focus_keyword": focus_keyword
                 }
             }
             if media_id: post_payload['featured_media'] = media_id
