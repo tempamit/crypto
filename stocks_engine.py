@@ -1,0 +1,337 @@
+import os # Make sure this is at the top with your other imports
+import requests
+import feedparser
+import time
+import json
+import re
+import html
+import sqlite3
+from io import BytesIO
+from urllib.parse import quote
+from google import genai
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from PIL import Image
+import random
+
+# ==========================================
+# 1. YOUR CONFIGURATION #
+# ==========================================
+WP_URL = "https://lavender-hare-662258.hostingersite.com/index.php/wp-json/wp/v2/posts"
+WP_MEDIA_URL = "https://lavender-hare-662258.hostingersite.com/index.php/wp-json/wp/v2/media"
+WP_TAGS_URL = "https://lavender-hare-662258.hostingersite.com/index.php/wp-json/wp/v2/tags"
+
+WP_USER = "adminipds"
+WP_APP_PASSWORD = "i9Jj FuLf 7qHx zJHI sGvR 3ruB" 
+
+# --- CHANGED: Hide the API Key from GitHub ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+JSON_KEY_FILE = "service_account.json" 
+DB_FILE = "stocks_processed.db" # CRITICAL: Renamed so it doesn't conflict
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview"
+]
+
+WP_CATEGORIES = {
+    737: "Global Equities",
+    738: "Forex Markets",
+    739: "Commodities",
+    740: "Macro Economics"
+}
+
+# ==========================================
+# 2. INFRASTRUCTURE & HELPER FUNCTIONS
+# ==========================================
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS processed (url TEXT PRIMARY KEY)''')
+    conn.commit()
+    conn.close()
+
+def is_url_processed(url):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM processed WHERE url = ?", (url,))
+    result = c.fetchone()
+    conn.close()
+    return bool(result)
+
+def mark_url_processed(url):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO processed (url) VALUES (?)", (url,))
+    conn.commit()
+    conn.close()
+
+def clean_for_comparison(text):
+    return re.sub(r'[^a-zA-Z0-9]', '', html.unescape(text)).lower()
+
+def article_exists_in_wp(title, original_url):
+    if is_url_processed(original_url): return True
+    try:
+        res = requests.get(f"{WP_URL}?per_page=20&_fields=title", auth=(WP_USER, WP_APP_PASSWORD))
+        if res.status_code == 200:
+            target_clean = clean_for_comparison(title)
+            for post in res.json():
+                if target_clean == clean_for_comparison(post['title']['rendered']):
+                    mark_url_processed(original_url) 
+                    return True
+    except: pass
+    return False
+
+def upload_optimized_image_to_wp(image_url, article_title, alt_text=""):
+    """Upgraded: Converts to WebP AND injects SEO Alt Text."""
+    try:
+        res = requests.get(image_url, timeout=10)
+        if res.status_code != 200: return None
+        
+        img = Image.open(BytesIO(res.content))
+        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+            
+        max_width = 1200
+        if img.width > max_width:
+            ratio = max_width / img.width
+            img = img.resize((max_width, int(img.height * ratio)), Image.Resampling.LANCZOS)
+        
+        buffer = BytesIO()
+        img.save(buffer, format="WEBP", quality=80)
+        img_data = buffer.getvalue()
+        
+        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', article_title)[:30]
+        headers = {
+            "Content-Type": "image/webp", 
+            "Content-Disposition": f"attachment; filename={safe_name}.webp"
+        }
+        upload_res = requests.post(WP_MEDIA_URL, headers=headers, data=img_data, auth=(WP_USER, WP_APP_PASSWORD))
+        
+        if upload_res.status_code == 201: 
+            media_id = upload_res.json()['id']
+            # SECONDARY API CALL: Inject the SEO Alt Text into the database
+            if alt_text:
+                requests.post(f"{WP_MEDIA_URL}/{media_id}", json={"alt_text": alt_text}, auth=(WP_USER, WP_APP_PASSWORD))
+            return media_id
+    except Exception as e:
+        print(f"  [!] Image optimization error: {e}")
+    return None
+
+def get_live_trends():
+    """Pulls live Google search trends from a rotating list of global tier-1 countries."""
+    # Major global traffic hubs: United States, UK, Canada, Australia, Singapore, India, UAE
+    global_hubs = ["US", "GB", "CA", "AU", "SG", "IN", "AE"]
+    all_trends = []
+
+    # Randomly pick 2 countries per cycle to mix global traffic without spamming the RSS feed
+    selected_hubs = random.sample(global_hubs, 2)
+
+    for geo in selected_hubs:
+        try:
+            feed = feedparser.parse(f"https://trends.google.com/trending/rss?geo={geo}")
+            # Grab the top 3 trends from each of the two selected countries
+            trends = [entry.title for entry in feed.entries[:3]]
+            all_trends.extend(trends)
+        except Exception as e:
+            print(f"  [!] Trend fetch error for {geo}: {e}")
+            continue
+
+    if all_trends:
+        # Shuffle the mixed global trends and pick 5 to give the AI variety
+        random.shuffle(all_trends)
+        final_trends = all_trends[:5]
+        return ", ".join(final_trends)
+    else:
+        return "global markets, breaking financial news, tech sector updates"
+
+def get_recent_posts_for_linking():
+    """Fetches the 3 newest WP articles to feed to the AI for internal linking."""
+    try:
+        res = requests.get(f"{WP_URL}?per_page=3&status=publish&_fields=title,link", auth=(WP_USER, WP_APP_PASSWORD))
+        if res.status_code == 200:
+            posts = res.json()
+            links_data = [f"- {p['title']['rendered']} (URL: {p['link']})" for p in posts]
+            return "\n".join(links_data)
+    except: pass
+    return "No recent posts available."
+
+def ping_google_indexing(url):
+    try:
+        scopes = ["https://www.googleapis.com/auth/indexing"]
+        credentials = service_account.Credentials.from_service_account_file(JSON_KEY_FILE, scopes=scopes)
+        service = build("indexing", "v3", credentials=credentials)
+        service.urlNotifications().publish(body={"url": url, "type": "URL_UPDATED"}).execute()
+        print(f"  [+] Google Indexing API: Pinged {url}")
+    except: pass
+
+def get_or_create_tags(tag_names):
+    tag_ids = []
+    for tag in tag_names:
+        res = requests.post(WP_TAGS_URL, auth=(WP_USER, WP_APP_PASSWORD), json={"name": tag})
+        if res.status_code == 201: tag_ids.append(res.json()['id'])
+        elif res.status_code == 400:
+            try: tag_ids.append(res.json()['data']['term_id'])
+            except: pass
+    return tag_ids
+
+# ==========================================
+# 3. MAIN ENGINE
+# ==========================================
+
+FEEDS = [
+    {"name": "Investing.com - Forex", "url": "https://www.investing.com/rss/news_1.rss"},
+    {"name": "Investing.com - Commodities", "url": "https://www.investing.com/rss/news_11.rss"},
+    {"name": "Investing.com - Stock Markets", "url": "https://www.investing.com/rss/news_25.rss"},
+    {"name": "FXStreet - Top News", "url": "https://action.fxstreet.com/rss/news"},
+    {"name": "Kitco - Gold & Metals", "url": "https://www.kitco.com/news/rss"},
+    {"name": "CNBC - World Markets", "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?profile=12000000&id=10000664"}
+]
+
+def run_aggregator():
+    init_db() 
+    print("\nStarting Global SEO News Sweep...")
+    
+    live_trends = get_live_trends()
+    recent_posts = get_recent_posts_for_linking() # Fetch internal links
+    print(f"  [~] Live Trends Hooked: {live_trends}")
+
+    for feed_info in FEEDS:
+        print(f"\n--- Checking: {feed_info['name']} ---")
+        try:
+            feed = feedparser.parse(feed_info['url'])
+            if not feed.entries: continue
+            
+            latest = feed.entries[0]
+            original_title = latest.title
+            article_link = latest.link
+
+            if article_exists_in_wp(original_title, article_link):
+                print(f"  [✓] Skipping: Already published ('{original_title[:30]}...')")
+                continue
+
+            summary = getattr(latest, 'summary', original_title)
+            
+            image_url = None
+            if 'media_content' in latest: image_url = latest.media_content[0]['url']
+            elif 'links' in latest:
+                for link in latest.links:
+                    if 'image' in link.get('type', ''): image_url = link.href
+
+            # --- THE "INFORMATION GAIN" SEO PROMPT ---
+            # --- THE "ENTITY HUB & INFORMATION GAIN" SEO PROMPT ---
+            # --- THE CRYPTO QUANT ANALYST PROMPT ---
+            prompt = f"""
+        You are a cynical, highly experienced Institutional Desk Trader operating out of London. You trade global equities, forex, and hard commodities. Your job is to break down this raw financial news and explain the macro-economic reality to other serious investors.
+        
+        News Title: {original_title}
+        Raw Data: {summary}
+        
+        STRICT HUMAN-MIMICRY CONSTRAINTS (CRITICAL):
+        1. TONE: Cold, analytical, and heavily focused on macro-economics (interest rates, central bank policy, liquidity, and yield). Use high burstiness (mix very short, punchy sentences with complex financial analysis). Absolutely NO retail trading fluff or "to the moon" excitement.
+        2. BAN LIST: You are strictly forbidden from using the following words: "delve", "testament", "ever-evolving", "landscape", "crucial", "vital", "game-changer", "unprecedented", "skyrocket", "plummet".
+        3. STRUCTURE: Start immediately with the hard financial facts. What asset is moving and why?
+        
+        ALGORITHMIC RESEARCH & FORMATTING:
+        Divide the article_html into these exact sections using strictly <h2> tags. Add id attributes to the <h2> tags for the Table of Contents:
+        - <h2 id="the-catalyst">The Macro Catalyst</h2>: State exactly what triggered this market movement in 2-3 sentences (e.g., inflation print, rate hike, supply chain shock).
+        - <h2 id="institutional-flow">Institutional Flow</h2>: Synthesize the news. Where is the smart money moving? How does this affect bond yields, the DXY (US Dollar Index), or specific commodity prices?
+        - <h2 id="trade-setup">The Trade Setup</h2>: Use a <ul> bulleted list to outline the actionable reality. One bullet for the "Long Bias" (bullish scenario) and one for the "Short Bias" (bearish risk).
+        
+        4. Internal Linking: Contextually hyperlink 1 or 2 of these recent articles directly inside your body paragraphs using natural anchor text:
+           {recent_posts}
+        5. FOCUS KEYWORD: Generate a highly targeted, 2-to-4 word SEO focus keyword for this article (e.g., "fed rate hike impact", "gold spot price").
+        6. Start the article_html with a quick bulleted Table of Contents with jump links (e.g., <a href="#the-catalyst">).
+        7. Generate a valid NewsArticle JSON-LD Schema block wrapped in <script type="application/ld+json"> tags at the end. Escape double quotes inside it.
+        8. Generate a 10-word, highly descriptive Alt Text for the featured image.
+        9. Categorization: Review this list of my website categories: {WP_CATEGORIES}. Select the 1 or 2 most appropriate Category IDs.
+
+        MANDATORY: Return ONLY a valid JSON object. Do NOT wrap it in markdown formatting (no ```json). Escape double quotes correctly.
+        Structure:
+        {{
+          "title": "Your punchy, institutional headline",
+          "article_html": "HTML post starting with TOC, followed by the 3 H2 sections, internal links woven in, ending with the schema block",
+          "meta_description": "150-char SEO snippet focused on market impact and price action",
+          "alt_text": "10 word descriptive image alt text",
+          "tags": ["Specific Ticker Symbol", "Central Bank", "Specific Commodity"],
+          "category_ids": [integer_id1, integer_id2],
+          "focus_keyword": "2-4 word SEO keyword"
+        }}
+        """
+            
+            ai_data = None
+            for model_name in FALLBACK_MODELS:
+                try:
+                    response = client.models.generate_content(model=model_name, contents=prompt)
+                    raw_text = response.text.strip()
+                    raw_text = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
+                    ai_data = json.loads(raw_text)
+                    break 
+                except Exception as e:
+                    print(f"  [!] Error with {model_name}: {e}. Trying next...")
+                    continue 
+
+            if not ai_data:
+                print("  [X] Models exhausted. Cooling down...")
+                time.sleep(60)
+                continue 
+
+            chosen_categories = ai_data.get('category_ids', feed_info.get('category_ids', [2]))
+            print(f"  [~] AI assigned categories: {chosen_categories}")
+
+            final_content = ai_data['article_html'] 
+            
+            # Extract Alt Text and pass it to the Image Optimizer
+            alt_text = ai_data.get('alt_text', original_title)
+            media_id = upload_optimized_image_to_wp(image_url, original_title, alt_text) if image_url else None
+            
+            tag_ids = get_or_create_tags(ai_data.get('tags', []))
+
+           # --- UPDATED NATIVE SEO PAYLOAD ---
+            seo_description = ai_data.get('meta_description', '')
+            focus_keyword = ai_data.get('focus_keyword', '') # <-- NEW: Extract the keyword from Gemini
+            
+            post_payload = {
+                "title": original_title,
+                "content": final_content,
+                "excerpt": seo_description, # Standard WP Fallback
+                "status": "publish",
+                "categories": chosen_categories,
+                "tags": tag_ids,
+                "_yoast_wpseo_metadesc": seo_description, # Injects directly into Yoast
+                "rank_math_description": seo_description, # Injects directly into Rank Math
+                "meta": {
+                    "rank_math_focus_keyword": focus_keyword  # <-- NEW: Injects Focus Keyword via our PHP snippet
+                }
+            }
+            if media_id: post_payload['featured_media'] = media_id
+
+            wp_res = requests.post(WP_URL, auth=(WP_USER, WP_APP_PASSWORD), json=post_payload)
+            
+            if wp_res.status_code == 201:
+                new_url = wp_res.json().get('link')
+                print(f"  [+] Success! Article Live: {new_url} | Keyword: {focus_keyword}")
+                mark_url_processed(article_link) 
+                ping_google_indexing(new_url)
+            else:
+                print(f"  [!] WordPress Error: {wp_res.status_code} - {wp_res.text}")
+
+        except Exception as e:
+            print(f"General Error processing {feed_info['name']}: {e}")
+
+        time.sleep(300)
+
+if __name__ == "__main__":
+    while True:
+        run_aggregator()
+        print("\nSweep Complete. Sleeping for 2 hours...")
+        time.sleep(7200)

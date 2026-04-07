@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Start the script
-CMD ["python", "-u", "auto_poster.py"]
+CMD ["python", "-u", "crypto_engine.py"]
