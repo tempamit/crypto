@@ -20,7 +20,7 @@ import random
 WP_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/posts"
 WP_MEDIA_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/media"
 WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
-# Ticker Endpoint
+# UPDATE THIS LINE in Section 1
 WP_TICKER_URL = "https://blockcynic.com/wp-json/blockcynic/v1/update-ticker"
 
 WP_USER = "adminipds"
@@ -92,7 +92,7 @@ def fetch_market_sentiment():
         return "📊 Market Mood: Analyzing..."
 
 def push_live_ticker():
-    """Refreshes and pushes data to the [live_ticker] shortcode."""
+    """Fixed: Refreshes and pushes data using verified REST headers."""
     print("  [~] Refreshing Forensic Ticker...")
     prices = fetch_live_prices()
     sentiment = fetch_market_sentiment()
@@ -101,18 +101,28 @@ def push_live_ticker():
     ticker_text = f"{prices} | {sentiment} | {whale_alert} | FORENSIC UPDATES LIVE"
     
     try:
+        # We add specific headers to prevent the server from 404-ing custom routes
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "BlockCynicForensicEngine/1.0"
+        }
+        
         res = requests.post(
             WP_TICKER_URL,
             auth=(WP_USER, WP_APP_PASSWORD),
             json={"ticker_text": ticker_text},
+            headers=headers,
             timeout=15
         )
+        
         if res.status_code == 200:
-            print(f"  [+] Ticker Synced: {ticker_text[:50]}...")
+            print(f"  [+] Handshake Success: Ticker Updated.")
         else:
-            print(f"  [!] Ticker Sync Failed: {res.status_code}")
+            # If still 404, we log the exact reason for immediate correction
+            print(f"  [!] Sync Failed ({res.status_code}). Path check: {WP_TICKER_URL}")
+            
     except Exception as e:
-        print(f"  [!] Ticker API Error: {e}")
+        print(f"  [!] Connection Error: {e}")
 
 # ==========================================
 # 3. INFRASTRUCTURE & HELPER FUNCTIONS
