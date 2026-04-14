@@ -67,53 +67,43 @@ def fetch_market_sentiment():
         return "📊 Market Mood: Neutral | "
 
 def fetch_live_prices():
-    """Fetches Top 5 coins with price changes."""
+    """Fetches Top 5 coins for the ticker."""
     try:
-        # CoinGecko Public API
         url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {"vs_currency": "usd", "ids": "bitcoin,ethereum,solana,binancecoin,ripple", "price_change_percentage": "24h"}
+        params = {
+            "vs_currency": "usd",
+            "ids": "bitcoin,ethereum,solana,binancecoin,ripple",
+            "price_change_percentage": "24h"
+        }
         data = requests.get(url, params=params, timeout=10).json()
         
-        segments = []
+        price_segments = []
         for coin in data:
             sym = coin['symbol'].upper()
             price = f"${coin['current_price']:,}"
             change = coin['price_change_percentage_24h']
-            # Color coding logic for the site to interpret
-            color = "UP" if change > 0 else "DOWN"
-            segments.append(f"{sym}: {price} ({color} {change:.2f}%)")
-        
-        return " | ".join(segments)
+            arrow = "▲" if change > 0 else "▼"
+            # Format with simple tags for the CSS to pick up
+            price_segments.append(f"{sym} {price} {arrow} {abs(change):.2f}%")
+            
+        return " | ".join(price_segments) + " | "
     except:
-        return "Market Prices: Loading..."
+        return ""
 
 def update_live_ticker():
+    # Gather everything
     prices = fetch_live_prices()
     sentiment = fetch_market_sentiment()
     whales = fetch_whale_movements()
     
-    # Combined Intelligent String
-    ticker_payload = f"LIVE PRICES: {prices} || FORENSIC DATA: {sentiment} || {whales}"
-
-    # 2. Push to WordPress
-    try:
-        # Use the base URL of your site
-        endpoint = "https://blockcynic.com/index.php/wp-json/blockcynic/v1/update-ticker"
-        
-        res = requests.post(
-            endpoint,
-            auth=(WP_USER, WP_APP_PASSWORD),
-            json={"ticker_text": ticker_payload},
-            timeout=15
-        )
-        
-        if res.status_code == 200:
-            print(f"  [+] Handshake Success: Website Ticker Updated.")
-        else:
-            print(f"  [!] Handshake Failed: {res.status_code} - {res.text}")
-            
-    except Exception as e:
-        print(f"  [!] Connection Error: {e}")
+    # Combined String
+    ticker_text = f"{prices}{sentiment} || {whales}"
+    
+    # PUSH TO WP (Ensure this matches your REST API endpoint)
+    payload = {"ticker_text": ticker_text}
+    requests.post("https://blockcynic.com/wp-json/blockcynic/v1/update-ticker", 
+                  auth=(WP_USER, WP_APP_PASSWORD), 
+                  json=payload)
         
 
 # ==========================================
