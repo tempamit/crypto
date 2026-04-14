@@ -14,12 +14,14 @@ from googleapiclient.discovery import build
 from PIL import Image
 import random
 
+
 # ==========================================
 # 1. YOUR CONFIGURATION #
 # ==========================================
 WP_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/posts"
 WP_MEDIA_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/media"
 WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
+TICKER_API_URL = "https://blockcynic.com/wp-json/wp/v2/settings" # Or a custom endpoint
 
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "9ppq BZkt 5wbj mEXf 7azk EPlM" 
@@ -34,6 +36,26 @@ JSON_KEY_FILE = "service_account.json"
 DB_FILE = "crypto_processed.db" # CRITICAL: Renamed so it doesn't conflict
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+def fetch_whale_movements():
+    # Example using Whale Alert (Requires API Key)
+    # For now, let's simulate forensic data
+    return "🐋 Whale Alert: 2,400 BTC ($150M) moved to Coinbase | "
+
+def fetch_market_sentiment():
+    # Alternative.me Fear & Greed Index
+    res = requests.get("https://api.alternative.me/fng/").json()
+    val = res['data'][0]['value']
+    classify = res['data'][0]['value_classification']
+    return f"📊 Market Mood: {classify} ({val}/100) | "
+
+def update_ticker():
+    ticker_text = fetch_whale_movements() + fetch_market_sentiment()
+    print(f"Update: {ticker_text}")
+    
+    # Push to a custom 'ticker_data' option in WP using your existing Auth
+    # This requires a small PHP snippet on the WP side to receive it
+    # Alternatively, save to a .json file on your server that the site reads
 
 FALLBACK_MODELS = [
     "gemini-2.5-flash",
