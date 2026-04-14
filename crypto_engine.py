@@ -67,11 +67,30 @@ def fetch_market_sentiment():
         return "📊 Market Mood: Neutral | "
 
 def update_live_ticker():
-    """Generates the string for the BlockCynic top-bar ticker."""
-    ticker_text = fetch_whale_movements() + fetch_market_sentiment()
-    print(f"  [~] Ticker Prepared: {ticker_text}")
-    # Note: To display this, you'll need the PHP endpoint on WP we discussed.
-    return ticker_text
+    # 1. Gather the data
+    sentiment = fetch_market_sentiment()
+    whales = fetch_whale_movements()
+    ticker_payload = f"{sentiment} | {whales} | FORENSIC UPDATES LIVE"
+
+    # 2. Push to WordPress
+    try:
+        # Use the base URL of your site
+        endpoint = "https://blockcynic.com/index.php/wp-json/blockcynic/v1/update-ticker"
+        
+        res = requests.post(
+            endpoint,
+            auth=(WP_USER, WP_APP_PASSWORD),
+            json={"ticker_text": ticker_payload},
+            timeout=15
+        )
+        
+        if res.status_code == 200:
+            print(f"  [+] Handshake Success: Website Ticker Updated.")
+        else:
+            print(f"  [!] Handshake Failed: {res.status_code} - {res.text}")
+            
+    except Exception as e:
+        print(f"  [!] Connection Error: {e}")
 
 # ==========================================
 # 3. INFRASTRUCTURE & HELPER FUNCTIONS
