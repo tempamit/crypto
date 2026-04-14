@@ -6,13 +6,13 @@ import json
 import re
 import html
 import sqlite3
-import random
 from io import BytesIO
 from urllib.parse import quote
 from google import genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from PIL import Image
+import random
 
 # ==========================================
 # 1. YOUR CONFIGURATION
@@ -20,16 +20,17 @@ from PIL import Image
 WP_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/posts"
 WP_MEDIA_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/media"
 WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
+# Ticker Endpoint
+WP_TICKER_URL = "https://blockcynic.com/index.php/wp-json/blockcynic/v1/update-ticker"
 
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "9ppq BZkt 5wbj mEXf 7azk EPlM" 
 WP_AUTHOR_ID = 3
 
-# Environment Variables for Security
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "PASTE_FALLBACK_IF_NOT_IN_ENV")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 JSON_KEY_FILE = "service_account.json" 
 
-# Coolify Persistent Path logic
+# Persistent DB Path for Coolify
 DB_PATH = "/app/data/" if os.path.exists("/app/data/") else ""
 DB_FILE = f"{DB_PATH}crypto_processed.db"
 
@@ -50,61 +51,68 @@ WP_CATEGORIES = {
 }
 
 # ==========================================
-# 2. TICKER & DATA FUNCTIONS
+# 2. TICKER ENGINE FUNCTIONS
 # ==========================================
 
-def fetch_whale_movements():
-    # Placeholder for Whale Alert API or manual tracking
-    return "🐋 Whale Alert: Significant BTC movement detected on-chain | "
+def fetch_live_prices():
+    """Fetches Top 7 coins: Price + 24h Change."""
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "ids": "bitcoin,ethereum,solana,binancecoin,ripple,cardano,dogecoin",
+            "order": "market_cap_desc",
+            "price_change_percentage": "24h"
+        }
+        data = requests.get(url, params=params, timeout=10).json()
+        
+        segments = []
+        for coin in data:
+            symbol = coin['symbol'].upper()
+            price = f"${coin['current_price']:,}"
+            change = coin['price_change_percentage_24h']
+            arrow = "▲" if change > 0 else "▼"
+            color_class = "ticker-up" if change > 0 else "ticker-down"
+            
+            # Formatting with span for your WP CSS
+            segments.append(f"{symbol} {price} <span class='{color_class}'>{arrow} {abs(change):.2f}%</span>")
+            
+        return " | ".join(segments)
+    except Exception as e:
+        print(f"  [!] Price Fetch Error: {e}")
+        return "Market Pulse: Refreshing..."
 
 def fetch_market_sentiment():
     try:
         res = requests.get("https://api.alternative.me/fng/", timeout=10).json()
         val = res['data'][0]['value']
         classify = res['data'][0]['value_classification']
-        return f"📊 Market Mood: {classify} ({val}/100) | "
+        return f"📊 Market Mood: {classify} ({val}/100)"
     except:
-        return "📊 Market Mood: Neutral | "
+        return "📊 Market Mood: Analyzing..."
 
-def fetch_live_prices():
-    """Fetches Top 5 coins for the ticker."""
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "ids": "bitcoin,ethereum,solana,binancecoin,ripple",
-            "price_change_percentage": "24h"
-        }
-        data = requests.get(url, params=params, timeout=10).json()
-        
-        price_segments = []
-        for coin in data:
-            sym = coin['symbol'].upper()
-            price = f"${coin['current_price']:,}"
-            change = coin['price_change_percentage_24h']
-            arrow = "▲" if change > 0 else "▼"
-            # Format with simple tags for the CSS to pick up
-            price_segments.append(f"{sym} {price} {arrow} {abs(change):.2f}%")
-            
-        return " | ".join(price_segments) + " | "
-    except:
-        return ""
-
-def update_live_ticker():
-    # Gather everything
+def push_live_ticker():
+    """Refreshes and pushes data to the [live_ticker] shortcode."""
+    print("  [~] Refreshing Forensic Ticker...")
     prices = fetch_live_prices()
     sentiment = fetch_market_sentiment()
-    whales = fetch_whale_movements()
+    whale_alert = "🐋 Whale Alert: Significant BTC movement detected on-chain"
     
-    # Combined String
-    ticker_text = f"{prices}{sentiment} || {whales}"
+    ticker_text = f"{prices} | {sentiment} | {whale_alert} | FORENSIC UPDATES LIVE"
     
-    # PUSH TO WP (Ensure this matches your REST API endpoint)
-    payload = {"ticker_text": ticker_text}
-    requests.post("https://blockcynic.com/wp-json/blockcynic/v1/update-ticker", 
-                  auth=(WP_USER, WP_APP_PASSWORD), 
-                  json=payload)
-        
+    try:
+        res = requests.post(
+            WP_TICKER_URL,
+            auth=(WP_USER, WP_APP_PASSWORD),
+            json={"ticker_text": ticker_text},
+            timeout=15
+        )
+        if res.status_code == 200:
+            print(f"  [+] Ticker Synced: {ticker_text[:50]}...")
+        else:
+            print(f"  [!] Ticker Sync Failed: {res.status_code}")
+    except Exception as e:
+        print(f"  [!] Ticker API Error: {e}")
 
 # ==========================================
 # 3. INFRASTRUCTURE & HELPER FUNCTIONS
@@ -138,7 +146,7 @@ def clean_for_comparison(text):
 def article_exists_in_wp(title, original_url):
     if is_url_processed(original_url): return True
     try:
-        res = requests.get(f"{WP_URL}?per_page=20&_fields=title", auth=(WP_USER, WP_APP_PASSWORD), timeout=15)
+        res = requests.get(f"{WP_URL}?per_page=20&_fields=title", auth=(WP_USER, WP_APP_PASSWORD), timeout=10)
         if res.status_code == 200:
             target_clean = clean_for_comparison(title)
             for post in res.json():
@@ -186,7 +194,7 @@ def get_live_trends():
             trends = [entry.title for entry in feed.entries[:3]]
             all_trends.extend(trends)
         except: continue
-    return ", ".join(all_trends[:5]) if all_trends else "crypto markets, btc price, web3"
+    return ", ".join(all_trends[:5]) if all_trends else "crypto markets, btc price"
 
 def get_recent_posts_for_linking():
     try:
@@ -207,7 +215,7 @@ def get_or_create_tags(tag_names):
     return tag_ids
 
 # ==========================================
-# 4. FEEDS & AGGREGATOR
+# 4. MAIN ENGINE
 # ==========================================
 
 FEEDS = [
@@ -222,9 +230,11 @@ def run_aggregator():
     init_db() 
     print(f"\n[{time.strftime('%H:%M:%S')}] BlockCynic Engine: Starting Global Crypto Sweep...")
     
+    # Refresh Ticker every cycle
+    push_live_ticker()
+
     live_trends = get_live_trends()
     recent_posts = get_recent_posts_for_linking()
-    update_live_ticker() # Refreshes ticker data
 
     for feed_info in FEEDS:
         print(f"\n--- Checking: {feed_info['name']} ---")
@@ -236,44 +246,28 @@ def run_aggregator():
             original_title = latest.title
             article_link = latest.link
 
-            # Image Gatekeeper
+            if article_exists_in_wp(original_title, article_link):
+                print(f"  [✓] Skipping: Already published.")
+                continue
+
+            raw_summary = getattr(latest, 'summary', original_title)
+            article_summary = html.unescape(re.sub('<[^<]+?>', '', raw_summary))
+
             image_url = None
             if 'media_content' in latest and latest.media_content:
                 image_url = latest.media_content[0].get('url')
             elif 'links' in latest:
                 for link in latest.links:
                     if 'image' in link.get('type', ''): image_url = link.href
-            
-            if not image_url:
-                print(f"  [!] Gatekeeper: No image. Skipping.")
-                continue
-
-            if article_exists_in_wp(original_title, article_link):
-                print(f"  [✓] Skipping: Already published.")
-                continue
-
-            # Standardize summary for AI
-            raw_summary = getattr(latest, 'summary', original_title)
-            article_summary = html.unescape(re.sub('<[^<]+?>', '', raw_summary))
 
             prompt = f"""
             You are a cynical, veteran quantitative crypto analyst for BlockCynic.com.
-            News: {original_title}. Summary: {article_summary}.
+            Headline: {original_title}. Summary: {article_summary}.
             Trends: {live_trends}. Recent posts: {recent_posts}.
             
-            Write a sharp, technical report (300 words).
-            Format with <h2> tags: Catalyst, On-Chain Reality, Bull & Bear Case.
-            Return ONLY valid JSON. 
-            
-            {{
-              "title": "Cynical headline",
-              "article_html": "HTML starting with TOC links",
-              "meta_description": "150-char SEO snippet",
-              "alt_text": "10-word descriptive alt text",
-              "tags": ["Token", "Exchange", "Figure"],
-              "category_ids": {feed_info['category_ids']},
-              "focus_keyword": "2-word keyword"
-            }}
+            Task: Write a sharp, technical report (300 words). No AI-cliches. 
+            Format: HTML with <h2> tags (Catalyst, On-Chain Reality, Bull & Bear Case).
+            Return ONLY valid JSON.
             """
 
             ai_data = None
@@ -286,34 +280,30 @@ def run_aggregator():
                 except: continue 
 
             if ai_data:
-                media_id = upload_optimized_image_to_wp(image_url, original_title, ai_data['alt_text'])
-                tag_ids = get_or_create_tags(ai_data['tags'])
+                media_id = upload_optimized_image_to_wp(image_url, original_title, ai_data.get('alt_text', ''))
+                tag_ids = get_or_create_tags(ai_data.get('tags', []))
                 
-                payload = {
-                    "title": ai_data['title'],
+                post_payload = {
+                    "title": original_title,
                     "content": ai_data['article_html'],
                     "excerpt": ai_data['meta_description'],
                     "status": "publish",
                     "author": WP_AUTHOR_ID,
-                    "categories": ai_data['category_ids'],
+                    "categories": ai_data.get('category_ids', feed_info['category_ids']),
                     "tags": tag_ids,
-                    "meta": {
-                        "rank_math_focus_keyword": ai_data['focus_keyword'],
-                        "rank_math_description": ai_data['meta_description']
-                    }
+                    "meta": { "rank_math_focus_keyword": ai_data.get('focus_keyword', '') }
                 }
-                if media_id: payload['featured_media'] = media_id
+                if media_id: post_payload['featured_media'] = media_id
 
-                wp_res = requests.post(WP_URL, auth=(WP_USER, WP_APP_PASSWORD), json=payload, timeout=20)
+                wp_res = requests.post(WP_URL, auth=(WP_USER, WP_APP_PASSWORD), json=post_payload, timeout=20)
                 if wp_res.status_code == 201:
                     print(f"  [+] Success! Article Live: {wp_res.json().get('link')}")
                     mark_url_processed(article_link)
                 else: print(f"  [!] WP Error: {wp_res.status_code}")
 
-        except Exception as e:
-            print(f"  [!] Error processing {feed_info['name']}: {e}")
+        except Exception as e: print(f"  [!] Error processing {feed_info['name']}: {e}")
 
-        time.sleep(10)
+        time.sleep(10) # Pause between feeds
 
 if __name__ == "__main__":
     while True:
