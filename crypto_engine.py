@@ -21,7 +21,7 @@ WP_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/posts"
 WP_MEDIA_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/media"
 WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
 # Ticker Endpoint
-WP_TICKER_URL = "https://blockcynic.com/index.php/wp-json/blockcynic/v1/update-ticker"
+WP_TICKER_URL = "https://blockcynic.com/wp-json/blockcynic/v1/update-ticker"
 
 WP_USER = "adminipds"
 WP_APP_PASSWORD = "9ppq BZkt 5wbj mEXf 7azk EPlM" 
