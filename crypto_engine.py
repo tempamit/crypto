@@ -67,43 +67,33 @@ def fetch_market_sentiment():
         return "📊 Market Mood: Neutral | "
 
 def fetch_live_prices():
-    """Fetches Top 7 coins: Price + 24h Change."""
+    """Fetches Top 5 coins with price changes."""
     try:
+        # CoinGecko Public API
         url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "ids": "bitcoin,ethereum,solana,binancecoin,ripple,cardano,dogecoin",
-            "order": "market_cap_desc",
-            "price_change_percentage": "24h"
-        }
+        params = {"vs_currency": "usd", "ids": "bitcoin,ethereum,solana,binancecoin,ripple", "price_change_percentage": "24h"}
         data = requests.get(url, params=params, timeout=10).json()
         
-        price_segments = []
+        segments = []
         for coin in data:
-            symbol = coin['symbol'].upper()
+            sym = coin['symbol'].upper()
             price = f"${coin['current_price']:,}"
             change = coin['price_change_percentage_24h']
-            arrow = "▲" if change > 0 else "▼"
-            
-            # Format: BTC $74,694 ▲ 3.47%
-            price_segments.append(f"{symbol} {price} {arrow} {change:.2f}%")
-            
-        return " | ".join(price_segments) + " | "
-    except Exception as e:
-        print(f"Price Fetch Error: {e}")
-        return ""
+            # Color coding logic for the site to interpret
+            color = "UP" if change > 0 else "DOWN"
+            segments.append(f"{sym}: {price} ({color} {change:.2f}%)")
+        
+        return " | ".join(segments)
+    except:
+        return "Market Prices: Loading..."
 
 def update_live_ticker():
-    # Combine everything for the push
-    forensic = fetch_whale_movements() + fetch_market_sentiment()
     prices = fetch_live_prices()
-    
-    # Send both as separate options OR one long string
-    # Let's send a long string for the 'Full Terminal' look
-    # 1. Gather the data
     sentiment = fetch_market_sentiment()
     whales = fetch_whale_movements()
-    ticker_payload = f"{sentiment} | {whales} | FORENSIC UPDATES LIVE"
+    
+    # Combined Intelligent String
+    ticker_payload = f"LIVE PRICES: {prices} || FORENSIC DATA: {sentiment} || {whales}"
 
     # 2. Push to WordPress
     try:
