@@ -91,29 +91,52 @@ def fetch_market_sentiment():
     except:
         return "📊 Market Mood: Analyzing..."
 
+def fetch_liquidations():
+    """Fetches Binance Futures data to calculate who is getting liquidated."""
+    try:
+        # 100% Free Public Endpoint (No API Key required)
+        url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT"
+        data = requests.get(url, timeout=10).json()
+        
+        volume = float(data['quoteVolume']) / 1_000_000_000 # Convert to Billions
+        change = float(data['priceChangePercent'])
+        
+        # The "Cynic Logic": Who is bleeding today?
+        rekt_side = "Longs" if change < 0 else "Shorts"
+        intensity = "🔥 MASSIVE" if abs(change) > 3 else "🩸 STEADY"
+        
+        # Returns a string formatted for your CSS tags
+        return f"{intensity} LIQUIDATIONS: {rekt_side} getting rekt (BTC Vol: ${volume:.2f}B)"
+    except Exception as e:
+        print(f"  [!] Liquidation Fetch Error: {e}")
+        return "🩸 LIQUIDATIONS: Calculating market casualties..."
+
 def push_live_ticker():
-    print("  [~] Refreshing Forensic Ticker...")
+    print("  [~] Refreshing Forensic Ticker (User Profile Pivot)...")
     prices = fetch_live_prices()
     sentiment = fetch_market_sentiment()
     whale_alert = "🐋 Whale Alert: Significant BTC movement detected"
-    ticker_text = f"{prices} | {sentiment} | {whale_alert} | FORENSIC UPDATES LIVE"
+    liquidations = fetch_liquidations() # <-- Pulls the new data
     
-    # PUT YOUR DRAFT POST ID HERE
-    TICKER_POST_ID = 1649
-    WP_NATIVE_URL = f"https://blockcynic.com/wp-json/wp/v2/posts/{TICKER_POST_ID}"
+    # Assemble the final string (Static text removed, Liquidations added)
+    ticker_text = f"{prices} | {sentiment} | {whale_alert} | {liquidations}"
+    
+    # Writing to User Profile 3 (Our bulletproof AJAX storage)
+    WP_USER_URL = "https://blockcynic.com/wp-json/wp/v2/users/3"
     
     try:
         res = requests.post(
-            WP_NATIVE_URL,
+            WP_USER_URL,
             auth=(WP_USER, WP_APP_PASSWORD),
-            json={"excerpt": ticker_text}, # Store data in the excerpt
+            json={"description": ticker_text},
             timeout=15
         )
         if res.status_code == 200:
-            print(f"  [+] Plan B Success: Ticker Draft Updated.")
+            print(f"  [+] Plan C Success: Ticker written to User 3 Profile.")
         else:
-            print(f"  [!] Sync Failed: {res.status_code}")
-    except Exception as e: pass
+            print(f"  [!] Sync Failed: {res.status_code} - {res.text}")
+    except Exception as e: 
+        print(f"  [!] Connection Error: {e}")
 
 # ==========================================
 # 3. INFRASTRUCTURE & HELPER FUNCTIONS
