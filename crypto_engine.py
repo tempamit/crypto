@@ -287,7 +287,7 @@ def run_aggregator():
     print(f"\n[{time.strftime('%H:%M:%S')}] BlockCynic Engine: Starting Global Crypto Sweep...")
     
     # Refresh Ticker every cycle
-    push_live_ticker()
+    push_cynic_dashboard()
 
     live_trends = get_live_trends()
     recent_posts = get_recent_posts_for_linking()
