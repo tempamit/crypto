@@ -92,28 +92,28 @@ def fetch_market_sentiment():
         return "📊 Market Mood: Analyzing..."
 
 def push_live_ticker():
-    print("  [~] Refreshing Forensic Ticker...")
+    print("  [~] Refreshing Forensic Ticker (User Profile Pivot)...")
     prices = fetch_live_prices()
     sentiment = fetch_market_sentiment()
     whale_alert = "🐋 Whale Alert: Significant BTC movement detected"
     ticker_text = f"{prices} | {sentiment} | {whale_alert} | FORENSIC UPDATES LIVE"
     
-    # PUT YOUR DRAFT POST ID HERE
-    TICKER_POST_ID = 1649
-    WP_NATIVE_URL = f"https://blockcynic.com/wp-json/wp/v2/posts/{TICKER_POST_ID}"
+    # We bypass posts entirely and write to your Author Profile (User ID 3)
+    WP_USER_URL = "https://blockcynic.com/wp-json/wp/v2/users/3"
     
     try:
         res = requests.post(
-            WP_NATIVE_URL,
+            WP_USER_URL,
             auth=(WP_USER, WP_APP_PASSWORD),
-            json={"excerpt": ticker_text}, # Store data in the excerpt
+            json={"description": ticker_text}, # Updating the user bio
             timeout=15
         )
         if res.status_code == 200:
-            print(f"  [+] Plan B Success: Ticker Draft Updated.")
+            print(f"  [+] Plan C Success: Ticker written to User 3 Profile.")
         else:
-            print(f"  [!] Sync Failed: {res.status_code}")
-    except Exception as e: pass
+            print(f"  [!] Sync Failed: {res.status_code} - {res.text}")
+    except Exception as e: 
+        print(f"  [!] Connection Error: {e}")
 
 # ==========================================
 # 3. INFRASTRUCTURE & HELPER FUNCTIONS
