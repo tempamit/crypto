@@ -92,37 +92,28 @@ def fetch_market_sentiment():
         return "📊 Market Mood: Analyzing..."
 
 def push_live_ticker():
-    """Fixed: Refreshes and pushes data using verified REST headers."""
     print("  [~] Refreshing Forensic Ticker...")
     prices = fetch_live_prices()
     sentiment = fetch_market_sentiment()
-    whale_alert = "🐋 Whale Alert: Significant BTC movement detected on-chain"
-    
+    whale_alert = "🐋 Whale Alert: Significant BTC movement detected"
     ticker_text = f"{prices} | {sentiment} | {whale_alert} | FORENSIC UPDATES LIVE"
     
+    # PUT YOUR DRAFT POST ID HERE
+    TICKER_POST_ID = 150 
+    WP_NATIVE_URL = f"https://blockcynic.com/wp-json/wp/v2/posts/{TICKER_POST_ID}"
+    
     try:
-        # We add specific headers to prevent the server from 404-ing custom routes
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "BlockCynicForensicEngine/1.0"
-        }
-        
         res = requests.post(
-            WP_TICKER_URL,
+            WP_NATIVE_URL,
             auth=(WP_USER, WP_APP_PASSWORD),
-            json={"ticker_text": ticker_text},
-            headers=headers,
+            json={"excerpt": ticker_text}, # Store data in the excerpt
             timeout=15
         )
-        
         if res.status_code == 200:
-            print(f"  [+] Handshake Success: Ticker Updated.")
+            print(f"  [+] Plan B Success: Ticker Draft Updated.")
         else:
-            # If still 404, we log the exact reason for immediate correction
-            print(f"  [!] Sync Failed ({res.status_code}). Path check: {WP_TICKER_URL}")
-            
-    except Exception as e:
-        print(f"  [!] Connection Error: {e}")
+            print(f"  [!] Sync Failed: {res.status_code}")
+    except Exception as e: pass
 
 # ==========================================
 # 3. INFRASTRUCTURE & HELPER FUNCTIONS
@@ -285,9 +276,21 @@ def run_aggregator():
                 try:
                     response = client.models.generate_content(model=model_name, contents=prompt)
                     raw_text = re.sub(r'^```json\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE)
-                    ai_data = json.loads(raw_text)
-                    break 
-                except: continue 
+                    parsed_json = json.loads(raw_text)
+                    
+                    # --- THE FIX: Verify the key actually exists ---
+                    if 'article_html' not in parsed_json:
+                        raise ValueError("AI JSON is missing the 'article_html' key")
+                        
+                    ai_data = parsed_json
+                    break # Exit loop if successful and valid
+                except Exception as e:
+                    print(f"  [!] {model_name} failed format check: {e}")
+                    continue 
+
+            if not ai_data:
+                print("  [X] Models exhausted or returned bad JSON. Skipping...")
+                continue # Safely skip to the next article feed
 
             if ai_data:
                 media_id = upload_optimized_image_to_wp(image_url, original_title, ai_data.get('alt_text', ''))
