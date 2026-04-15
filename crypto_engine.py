@@ -99,7 +99,7 @@ def push_live_ticker():
     ticker_text = f"{prices} | {sentiment} | {whale_alert} | FORENSIC UPDATES LIVE"
     
     # PUT YOUR DRAFT POST ID HERE
-    TICKER_POST_ID = 150 
+    TICKER_POST_ID = 1649
     WP_NATIVE_URL = f"https://blockcynic.com/wp-json/wp/v2/posts/{TICKER_POST_ID}"
     
     try:
