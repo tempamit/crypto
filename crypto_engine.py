@@ -141,7 +141,6 @@ def fetch_heatmap_data():
         print(f"  [!] Heatmap Fetch Error: {e}")
         return []
     
-    
 def fetch_shadow_data():
     """FIXED: Moved up so fetch_market_dashboard_data can see it."""
     try:
@@ -160,6 +159,9 @@ def fetch_shadow_data():
 
 def fetch_market_dashboard_data():
     print("  [~] Gathering Master Dashboard Data...")
+
+    # 1. Fetch the new heatmap list
+    heatmap_list = fetch_heatmap_data()
     
     # Initialize all keys with empty/default values to prevent "Key Missing" errors
     dashboard = {
@@ -170,6 +172,7 @@ def fetch_market_dashboard_data():
         "sentiment_label": "Neutral",
         "whales": [],
         "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"}
+        "heatmap": heatmap_list  # <--- THE KEY MUST MATCH THE PHP
     }
 
     try:
