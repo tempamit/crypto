@@ -132,46 +132,48 @@ def fetch_shadow_data():
         return {"status": "Monitoring Shadows...", "amount": "0 BTC", "wallet": "---"}
 
 def fetch_market_dashboard_data():
-    """Fetches and calculates data for all 4 widgets"""
     print("  [~] Gathering Master Dashboard Data...")
     
-    # 1. Gainers & Losers (Free Binance API)
-    gainers, losers = [], []
+    # Initialize all keys with empty/default values to prevent "Key Missing" errors
+    dashboard = {
+        "ticker": "Market Pulse: Refreshing...",
+        "gainers": [],
+        "losers": [],
+        "sentiment_score": "50",
+        "sentiment_label": "Neutral",
+        "whales": [],
+        "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"}
+    }
+
     try:
+        # 1. Gainers & Losers
         binance_data = requests.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10).json()
         pairs = [d for d in binance_data if d['symbol'].endswith('USDT')]
         pairs.sort(key=lambda x: float(x['priceChangePercent']))
-        losers = [{"symbol": p['symbol'].replace('USDT',''), "change": f"{float(p['priceChangePercent']):.2f}%"} for p in pairs[:5]]
-        gainers_raw = pairs[-5:]
-        gainers_raw.reverse()
-        gainers = [{"symbol": p['symbol'].replace('USDT',''), "change": f"+{float(p['priceChangePercent']):.2f}%"} for p in gainers_raw]
-    except Exception as e: print(f"Binance Error: {e}")
+        dashboard["losers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"{float(p['priceChangePercent']):.2f}%"} for p in pairs[:5]]
+        gain_raw = pairs[-5:]; gain_raw.reverse()
+        dashboard["gainers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"+{float(p['priceChangePercent']):.2f}%"} for p in gain_raw]
 
-    # 2. Sentiment (Free Alternative.me API)
-    sentiment_score, sentiment_label = "50", "Neutral"
-    try:
+        # 2. Sentiment
         sent_req = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5).json()
-        sentiment_score = sent_req['data'][0]['value']
-        sentiment_label = sent_req['data'][0]['value_classification']
-    except: pass
+        dashboard["sentiment_score"] = sent_req['data'][0]['value']
+        dashboard["sentiment_label"] = sent_req['data'][0]['value_classification']
 
-    # 3. Whale Alerts (Dynamic Proxy)
-    actions = ["transferred to Coinbase (Dump Risk)", "transferred to Binance", "withdrawn to Unknown Wallet (Accumulation)"]
-    coins = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
-    whales = [f"🚨 {random.randint(1000, 50000)} {random.choice(coins)} {random.choice(actions)}" for _ in range(4)]
+        # 3. Whales
+        actions = ["transferred to Coinbase", "transferred to Binance", "withdrawn to Wallet"]
+        coins = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+        dashboard["whales"] = [f"🚨 {random.randint(1000, 50000)} {random.choice(coins)} {random.choice(actions)}" for _ in range(4)]
 
-    # 4. Ticker (Your existing functions)
-    ticker_text = f"{fetch_live_prices()} | {fetch_liquidations()}"
+        # 4. Ticker
+        dashboard["ticker"] = f"{fetch_live_prices()} | {fetch_liquidations()}"
 
-    # Package everything into a single JSON dictionary
-    return {
-        "ticker": ticker_text,
-        "gainers": gainers,
-        "losers": losers,
-        "sentiment_score": sentiment_score,
-        "sentiment_label": sentiment_label,
-        "whales": whales
-    }
+        # 5. Shadow Tracker (Crucial Merge)
+        dashboard["shadow_tracker"] = fetch_shadow_data()
+
+    except Exception as e:
+        print(f"  [!] Dashboard Data Error: {e}")
+
+    return dashboard
 
 def push_cynic_dashboard():
     """Pushes the Master JSON Payload to WordPress User 3"""
