@@ -378,3 +378,33 @@ if __name__ == "__main__":
         run_aggregator()
         print("\nSweep Complete. Sleeping for 2 hours...")
         time.sleep(7200)
+
+# 1. Add this function to your main crypto_engine.py
+def fetch_shadow_data():
+    try:
+        # Genesis Whale Wallet
+        url = "https://blockchain.info/rawaddr/34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo?limit=1"
+        data = requests.get(url, timeout=10).json()
+        last_tx = data['txs'][0]
+        amount = sum(out['value'] for out in last_tx['out']) / 100000000
+        return {
+            "wallet": "34xp4v...wseo",
+            "amount": f"{amount:,.2f} BTC",
+            "status": "🚨 MASSIVE SHADOW MOVE" if amount > 100 else "📉 Shadow Rebalancing",
+            "hash": last_tx['hash'][:8] + "..."
+        }
+    except:
+        return {"status": "Monitoring Shadows...", "amount": "0 BTC", "wallet": "---"}
+
+# 2. Update your master dictionary in the same file:
+def fetch_market_dashboard_data():
+    # ... existing logic ...
+    return {
+        "ticker": ticker_text,
+        "gainers": gainers,
+        "losers": losers,
+        "sentiment_score": sentiment_score,
+        "sentiment_label": sentiment_label,
+        "whales": whales,
+        "shadow_tracker": fetch_shadow_data() # <--- The Merge
+    }
