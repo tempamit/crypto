@@ -141,8 +141,17 @@ def fetch_heatmap_data():
         print(f"  [!] Heatmap Fetch Error: {e}")
         return []
     
+def fetch_rekt_base_data():
+    """Fetches BTC price for the Rekt Calculator comparison."""
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        data = requests.get(url, timeout=10).json()
+        return data['bitcoin']['usd']
+    except:
+        return 74800 # Fallback to a current realistic price
+
 def fetch_shadow_data():
-    """FIXED: Moved up so fetch_market_dashboard_data can see it."""
+    """Fetches the latest movement from the target Whale wallet."""
     try:
         url = "https://blockchain.info/rawaddr/34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo?limit=1"
         data = requests.get(url, timeout=10).json()
@@ -152,28 +161,19 @@ def fetch_shadow_data():
             "wallet": "34xp4v...wseo",
             "amount": f"{amount:,.2f} BTC",
             "status": "🚨 MASSIVE SHADOW MOVE" if amount > 100 else "📉 Shadow Rebalancing",
-            "btc_price": fetch_rekt_base_data(), # Add this
             "hash": last_tx['hash'][:8] + "..."
         }
     except:
-        return {"status": "Monitoring Shadows...", "amount": "0 BTC", "wallet": "---"}
-
-def fetch_rekt_base_data():
-    """Fetches BTC price for the Rekt Calculator comparison."""
-    try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        data = requests.get(url, timeout=10).json()
-        return data['bitcoin']['usd']
-    except:
-        return 70000 # Fallback
+        return {"status": "Monitoring Shadows...", "amount": "0 BTC", "wallet": "---", "hash": "---"}
     
 def fetch_market_dashboard_data():
     print("  [~] Gathering Master Dashboard Data...")
 
-    # 1. Fetch the new heatmap list
+    # 1. Fetch reusable price data first
+    current_btc = fetch_rekt_base_data()
     heatmap_list = fetch_heatmap_data()
     
-    # Initialize all keys with empty/default values to prevent "Key Missing" errors
+    # 2. Initialize Dashboard with root keys
     dashboard = {
         "ticker": "Market Pulse: Refreshing...",
         "gainers": [],
@@ -182,11 +182,12 @@ def fetch_market_dashboard_data():
         "sentiment_label": "Neutral",
         "whales": [],
         "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"},
-        "heatmap": heatmap_list  # <--- THE KEY MUST MATCH THE PHP
+        "heatmap": heatmap_list,
+        "btc_price": current_btc  # <--- Moved to ROOT so PHP can find it
     }
 
     try:
-        # 1. Gainers & Losers
+        # 3. Gainers & Losers (Binance)
         binance_data = requests.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10).json()
         pairs = [d for d in binance_data if d['symbol'].endswith('USDT')]
         pairs.sort(key=lambda x: float(x['priceChangePercent']))
@@ -194,20 +195,18 @@ def fetch_market_dashboard_data():
         gain_raw = pairs[-5:]; gain_raw.reverse()
         dashboard["gainers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"+{float(p['priceChangePercent']):.2f}%"} for p in gain_raw]
 
-        # 2. Sentiment
+        # 4. Sentiment (Fear & Greed)
         sent_req = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5).json()
         dashboard["sentiment_score"] = sent_req['data'][0]['value']
         dashboard["sentiment_label"] = sent_req['data'][0]['value_classification']
 
-        # 3. Whales
+        # 5. Whales (Simulated/Scraped movements)
         actions = ["transferred to Coinbase", "transferred to Binance", "withdrawn to Wallet"]
         coins = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
         dashboard["whales"] = [f"🚨 {random.randint(1000, 50000)} {random.choice(coins)} {random.choice(actions)}" for _ in range(4)]
 
-        # 4. Ticker
+        # 6. Ticker & Shadow
         dashboard["ticker"] = f"{fetch_live_prices()} | {fetch_liquidations()}"
-
-        # 5. Shadow Tracker (Crucial Merge)
         dashboard["shadow_tracker"] = fetch_shadow_data()
 
     except Exception as e:
