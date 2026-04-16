@@ -114,6 +114,33 @@ def fetch_liquidations():
     except Exception as e:
         print(f"  [!] Liquidation Fetch Error: {e}")
         return "🩸 LIQUIDATIONS: Calculating market casualties..."
+
+def fetch_heatmap_data():
+    """Fetches Top 20 coins for the Heatmap grid."""
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 20,
+            "page": 1,
+            "sparkline": False,
+            "price_change_percentage": "24h"
+        }
+        data = requests.get(url, params=params, timeout=10).json()
+        
+        heatmap_list = []
+        for coin in data:
+            heatmap_list.append({
+                "symbol": coin['symbol'].upper(),
+                "change": round(coin['price_change_percentage_24h'], 2),
+                "cap": coin['market_cap']
+            })
+        return heatmap_list
+    except Exception as e:
+        print(f"  [!] Heatmap Fetch Error: {e}")
+        return []
+    
     
 def fetch_shadow_data():
     """FIXED: Moved up so fetch_market_dashboard_data can see it."""
