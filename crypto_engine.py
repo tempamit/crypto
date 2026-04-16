@@ -152,11 +152,21 @@ def fetch_shadow_data():
             "wallet": "34xp4v...wseo",
             "amount": f"{amount:,.2f} BTC",
             "status": "🚨 MASSIVE SHADOW MOVE" if amount > 100 else "📉 Shadow Rebalancing",
+            "btc_price": fetch_rekt_base_data(), # Add this
             "hash": last_tx['hash'][:8] + "..."
         }
     except:
         return {"status": "Monitoring Shadows...", "amount": "0 BTC", "wallet": "---"}
 
+def fetch_rekt_base_data():
+    """Fetches BTC price for the Rekt Calculator comparison."""
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        data = requests.get(url, timeout=10).json()
+        return data['bitcoin']['usd']
+    except:
+        return 70000 # Fallback
+    
 def fetch_market_dashboard_data():
     print("  [~] Gathering Master Dashboard Data...")
 
