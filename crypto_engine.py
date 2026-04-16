@@ -171,7 +171,7 @@ def fetch_market_dashboard_data():
         "sentiment_score": "50",
         "sentiment_label": "Neutral",
         "whales": [],
-        "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"}
+        "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"},
         "heatmap": heatmap_list  # <--- THE KEY MUST MATCH THE PHP
     }
 
