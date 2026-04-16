@@ -20,7 +20,6 @@ import random
 WP_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/posts"
 WP_MEDIA_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/media"
 WP_TAGS_URL = "https://blockcynic.com/index.php/wp-json/wp/v2/tags"
-# UPDATE THIS LINE in Section 1
 WP_TICKER_URL = "https://blockcynic.com/wp-json/blockcynic/v1/update-ticker"
 
 WP_USER = "adminipds"
@@ -37,9 +36,14 @@ DB_FILE = f"{DB_PATH}crypto_processed.db"
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash-latest",
-    "gemini-3.1-flash-lite-preview"
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview"
 ]
 
 WP_CATEGORIES = {
@@ -110,6 +114,22 @@ def fetch_liquidations():
     except Exception as e:
         print(f"  [!] Liquidation Fetch Error: {e}")
         return "🩸 LIQUIDATIONS: Calculating market casualties..."
+    
+def fetch_shadow_data():
+    """FIXED: Moved up so fetch_market_dashboard_data can see it."""
+    try:
+        url = "https://blockchain.info/rawaddr/34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo?limit=1"
+        data = requests.get(url, timeout=10).json()
+        last_tx = data['txs'][0]
+        amount = sum(out['value'] for out in last_tx['out']) / 100000000
+        return {
+            "wallet": "34xp4v...wseo",
+            "amount": f"{amount:,.2f} BTC",
+            "status": "🚨 MASSIVE SHADOW MOVE" if amount > 100 else "📉 Shadow Rebalancing",
+            "hash": last_tx['hash'][:8] + "..."
+        }
+    except:
+        return {"status": "Monitoring Shadows...", "amount": "0 BTC", "wallet": "---"}
 
 def fetch_market_dashboard_data():
     """Fetches and calculates data for all 4 widgets"""
@@ -378,4 +398,3 @@ if __name__ == "__main__":
         run_aggregator()
         print("\nSweep Complete. Sleeping for 2 hours...")
         time.sleep(7200)
-        
