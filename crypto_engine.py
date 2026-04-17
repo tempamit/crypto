@@ -36,12 +36,14 @@ DB_FILE = f"{DB_PATH}crypto_processed.db"
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 FALLBACK_MODELS = [
-    "gemini-2.0-flash-exp", # Better availability for experimental
-    "gemini-1.5-flash", 
-    "gemini-1.5-flash-8b",  # Very high quota, great for news
-    "gemini-2.0-flash-lite-preview-02-05", # Specific version
-    "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview"
+    "models/gemini-2.5-flash",
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.0-flash",
+    "models/gemini-2.0-flash-lite",
+    "models/gemini-1.5-flash", # Removed "-latest" to prevent 404s
+    "models/gemini-3-flash-preview",
+    "models/gemini-3.1-flash-lite-preview",
+    "models/gemini-3.1-pro-preview"
 ]
 
 WP_CATEGORIES = {
@@ -122,32 +124,6 @@ def fetch_liquidations():
     except Exception as e:
         print(f"  [!] Liquidation Fetch Error: {e}")
         return "🩸 LIQUIDATIONS: Calculating market casualties..."
-
-def fetch_heatmap_data():
-    """Fetches Top 20 coins for the Heatmap grid."""
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 20,
-            "page": 1,
-            "sparkline": False,
-            "price_change_percentage": "24h"
-        }
-        data = requests.get(url, params=params, timeout=10).json()
-        
-        heatmap_list = []
-        for coin in data:
-            heatmap_list.append({
-                "symbol": coin['symbol'].upper(),
-                "change": round(coin['price_change_percentage_24h'], 2),
-                "cap": coin['market_cap']
-            })
-        return heatmap_list
-    except Exception as e:
-        print(f"  [!] Heatmap Fetch Error: {e}")
-        return []
     
 def fetch_rekt_base_data():
     """Fetches BTC price for the Rekt Calculator comparison."""
@@ -179,7 +155,6 @@ def fetch_market_dashboard_data():
 
     # 1. Fetch reusable price data first
     current_btc = fetch_rekt_base_data()
-    heatmap_list = fetch_heatmap_data()
     
     # 2. Initialize Dashboard with root keys
     dashboard = {
@@ -190,8 +165,7 @@ def fetch_market_dashboard_data():
         "sentiment_label": "Neutral",
         "whales": [],
         "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"},
-        "heatmap": heatmap_list,
-        "btc_price": current_btc  # <--- Moved to ROOT so PHP can find it
+        "btc_price": current_btc  
     }
 
     try:
