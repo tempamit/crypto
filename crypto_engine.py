@@ -55,6 +55,18 @@ WP_CATEGORIES = {
 }
 
 # ==========================================
+# NEWSROOM ROUTING MATRIX
+# Maps Primary Category ID -> (Author ID, Persona Prompt)
+# ==========================================
+NEWSROOM_MATRIX = {
+    2: (3, "Amit S. Loomba, Chief Technology Officer with a BSc. Focus your analysis on core infrastructure, smart contract tech, and network security."),
+    3: (5, "Sucheta, Marketing & Sales Strategist. Focus your analysis on retail adoption, community sentiment, and token marketing strategies."),
+    4: (3, "Amit S. Loomba, Chief Technology Officer. Focus your analysis on the technological architecture and developer execution of Web3/AI."),
+    5: (6, "Harman Malhotra, Financial Analyst with an MBA in Finance. Focus your analysis on institutional flows, market caps, and macroeconomic indicators."),
+    6: (4, "Arti Pal, Strategic Operations & Compliance Analyst with a Math and HR background. Focus your analysis on regulatory shifts, corporate operations, and policy impact.")
+}
+
+# ==========================================
 # 2. TICKER ENGINE FUNCTIONS
 # ==========================================
 
@@ -372,6 +384,28 @@ def run_aggregator():
             The JSON MUST contain a key named 'article_html' with the report content.
             The JSON MUST also contain 'meta_description', 'tags', and 'focus_keyword'.
             """
+            # --- DYNAMIC AUTHOR SELECTION ---
+            # Get the primary category for this specific RSS feed
+            primary_cat_id = feed_info['category_ids'][0]
+            
+            # Fetch the Author ID and Persona based on the matrix
+            author_id, author_persona = NEWSROOM_MATRIX.get(primary_cat_id, (3, "Amit S. Loomba, CTO."))
+
+            prompt = f"""
+            You are {author_persona} writing for BlockCynic.com.
+            Maintain a cynical, veteran, and highly analytical tone.
+            
+            Headline: {original_title}. Summary: {article_summary}.
+            Trends: {live_trends}. Recent posts: {recent_posts}.
+            
+            Task: Write a sharp, technical report (300 words). No AI-cliches. 
+            Format: HTML with <h2> tags (Catalyst, On-Chain Reality, Bull & Bear Case).
+            
+            CRITICAL REQUIREMENT: 
+            You must return a valid JSON object. 
+            The JSON MUST contain a key named 'article_html' with the report content.
+            The JSON MUST also contain 'meta_description', 'tags', and 'focus_keyword'.
+            """
 
             ai_data = None
             for idx, model_name in enumerate(FALLBACK_MODELS):
@@ -411,7 +445,7 @@ def run_aggregator():
                     "content": ai_data['article_html'],
                     "excerpt": ai_data['meta_description'],
                     "status": "publish",
-                    "author": WP_AUTHOR_ID,
+                    "author": author_id, # <--- Dynamically assigned!
                     "categories": ai_data.get('category_ids', feed_info['category_ids']),
                     "tags": tag_ids,
                     "meta": { "rank_math_focus_keyword": ai_data.get('focus_keyword', '') }
