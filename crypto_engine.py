@@ -442,8 +442,23 @@ def run_aggregator():
 
         time.sleep(25) # Pause between feeds
 
+# ==========================================
+# 5. THE 90-MINUTE SCHEDULER
+# ==========================================
+
 if __name__ == "__main__":
+    init_db()
+    print(f"[{time.strftime('%H:%M:%S')}] BlockCynic Scheduler: Starting 90-Min Rhythm...")
+    
     while True:
+        # 1. Update the Ticker/Heatmap first so the site stays live
+        push_cynic_dashboard()
+        
+        # 2. Run the Aggregator for one sweep
+        # Note: Your run_aggregator() currently loops through ALL feeds.
+        # To keep it to 1 post per 90 mins, we run the sweep once.
         run_aggregator()
-        print("\nSweep Complete. Sleeping for 2 hours...")
-        time.sleep(7200)
+        
+        # 3. Wait exactly 90 minutes (5400 seconds)
+        print(f"\n[{time.strftime('%H:%M:%S')}] Post Cycle Complete. Next forensic sweep in 90 minutes...")
+        time.sleep(5400)
