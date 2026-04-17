@@ -40,7 +40,7 @@ FALLBACK_MODELS = [
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
-    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
     "gemini-3-flash-preview",
     "gemini-3.1-flash-lite-preview",
     "gemini-3.1-pro-preview"
@@ -388,21 +388,29 @@ def run_aggregator():
             """
 
             ai_data = None
-            for model_name in FALLBACK_MODELS:
+            for idx, model_name in enumerate(FALLBACK_MODELS):
                 try:
+                    wait = (idx + 1) * 5 
+                    time.sleep(wait) 
+                    
                     response = client.models.generate_content(model=model_name, contents=prompt)
                     raw_text = re.sub(r'^```json\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE)
                     parsed_json = json.loads(raw_text)
                     
-                    # --- THE FIX: Verify the key actually exists ---
                     if 'article_html' not in parsed_json:
+                        # --- ADDITION C: Reminder for missing keys ---
+                        prompt += " IMPORTANT: You missed the 'article_html' key. Return it now."
                         raise ValueError("AI JSON is missing the 'article_html' key")
                         
                     ai_data = parsed_json
-                    break # Exit loop if successful and valid
+                    break 
                 except Exception as e:
-                    print(f"  [!] {model_name} failed format check: {e}")
-                    continue 
+                    # --- ADDITION A: Handle Quota specifically ---
+                    if "429" in str(e):
+                        print(f"  [!] {model_name} Quota Exhausted. Cooling down 15s...")
+                        time.sleep(15)
+                    print(f"  [!] {model_name} failed: {e}")
+                    continue
 
             if not ai_data:
                 print("  [X] Models exhausted or returned bad JSON. Skipping...")
@@ -432,7 +440,7 @@ def run_aggregator():
 
         except Exception as e: print(f"  [!] Error processing {feed_info['name']}: {e}")
 
-        time.sleep(10) # Pause between feeds
+        time.sleep(25) # Pause between feeds
 
 if __name__ == "__main__":
     while True:
