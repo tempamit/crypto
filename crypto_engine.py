@@ -152,44 +152,44 @@ def fetch_shadow_data():
     
 def fetch_market_dashboard_data():
     print("  [~] Gathering Master Dashboard Data...")
-
-    # 1. Fetch reusable price data first
+    
+    # 1. Start with the Rekt Base
     current_btc = fetch_rekt_base_data()
     
-    # 2. Initialize Dashboard with root keys
+    # 2. Defensive Breather: Wait 5s before next API hit to avoid 429
+    time.sleep(5) 
+    
+    # 3. Clean Dashboard (HEATMAP REMOVED)
     dashboard = {
-        "ticker": "Market Pulse: Refreshing...",
+        "ticker": fetch_live_prices(),
         "gainers": [],
         "losers": [],
         "sentiment_score": "50",
         "sentiment_label": "Neutral",
         "whales": [],
-        "shadow_tracker": {"status": "Initializing...", "amount": "0 BTC", "wallet": "---"},
-        "btc_price": current_btc  
+        "shadow_tracker": fetch_shadow_data(),
+        "btc_price": current_btc
     }
 
     try:
-        # 3. Gainers & Losers (Binance)
+        # Gainers & Losers from Binance
         binance_data = requests.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10).json()
-        pairs = [d for d in binance_data if d['symbol'].endswith('USDT')]
-        pairs.sort(key=lambda x: float(x['priceChangePercent']))
-        dashboard["losers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"{float(p['priceChangePercent']):.2f}%"} for p in pairs[:5]]
-        gain_raw = pairs[-5:]; gain_raw.reverse()
-        dashboard["gainers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"+{float(p['priceChangePercent']):.2f}%"} for p in gain_raw]
+        if isinstance(binance_data, list):
+            pairs = [d for d in binance_data if d['symbol'].endswith('USDT')]
+            pairs.sort(key=lambda x: float(x['priceChangePercent']))
+            dashboard["losers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"{float(p['priceChangePercent']):.2f}%"} for p in pairs[:5]]
+            gain_raw = pairs[-5:]; gain_raw.reverse()
+            dashboard["gainers"] = [{"symbol": p['symbol'].replace('USDT',''), "change": f"+{float(p['priceChangePercent']):.2f}%"} for p in gain_raw]
 
-        # 4. Sentiment (Fear & Greed)
+        # Sentiment
         sent_req = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5).json()
         dashboard["sentiment_score"] = sent_req['data'][0]['value']
         dashboard["sentiment_label"] = sent_req['data'][0]['value_classification']
 
-        # 5. Whales (Simulated/Scraped movements)
+        # Whales
         actions = ["transferred to Coinbase", "transferred to Binance", "withdrawn to Wallet"]
         coins = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
         dashboard["whales"] = [f"🚨 {random.randint(1000, 50000)} {random.choice(coins)} {random.choice(actions)}" for _ in range(4)]
-
-        # 6. Ticker & Shadow
-        dashboard["ticker"] = f"{fetch_live_prices()} | {fetch_liquidations()}"
-        dashboard["shadow_tracker"] = fetch_shadow_data()
 
     except Exception as e:
         print(f"  [!] Dashboard Data Error: {e}")
@@ -366,7 +366,11 @@ def run_aggregator():
             
             Task: Write a sharp, technical report (300 words). No AI-cliches. 
             Format: HTML with <h2> tags (Catalyst, On-Chain Reality, Bull & Bear Case).
-            Return ONLY valid JSON.
+            
+            CRITICAL REQUIREMENT: 
+            You must return a valid JSON object. 
+            The JSON MUST contain a key named 'article_html' with the report content.
+            The JSON MUST also contain 'meta_description', 'tags', and 'focus_keyword'.
             """
 
             ai_data = None
