@@ -59,41 +59,37 @@ WP_CATEGORIES = {
 # ==========================================
 
 def fetch_live_prices():
-    """Fetches Top 7 coins: Price + 24h Change."""
+    """Fetches Top 7 coins with a local cache check to avoid 429 errors."""
+    cache_file = f"{DB_PATH}ticker_cache.json"
+    
+    # 1. Check if cache exists and is fresh (less than 10 mins old)
+    if os.path.exists(cache_file):
+        if time.time() - os.path.getmtime(cache_file) < 600:
+            with open(cache_file, 'r') as f:
+                return f.read()
+
     try:
         url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "ids": "bitcoin,ethereum,solana,binancecoin,ripple,cardano,dogecoin",
-            "order": "market_cap_desc",
-            "price_change_percentage": "24h"
-        }
-        # We use a custom Header to look less like a bot and reduce 429s
-        headers = {'User-Agent': 'Mozilla/5.0'} 
+        params = {"vs_currency": "usd", "ids": "bitcoin,ethereum,solana,binancecoin,ripple,cardano,dogecoin", "order": "market_cap_desc", "price_change_percentage": "24h"}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, params=params, headers=headers, timeout=10)
         data = response.json()
-        
-        if not isinstance(data, list):
-            print(f"  [!] Price API returned error or non-list: {data}")
-            return "Market Pulse: Synchronizing..."
+
+        if isinstance(data, list):
+            segments = []
+            for coin in data:
+                symbol, price_val, change = coin.get('symbol', '???').upper(), coin.get('current_price', 0), coin.get('price_change_percentage_24h', 0) or 0
+                arrow, color_class = ("▲", "ticker-up") if change > 0 else ("▼", "ticker-down")
+                segments.append(f"{symbol} ${price_val:,} <span class='{color_class}'>{arrow} {abs(change):.2f}%</span>")
             
-        segments = []
-        for coin in data:
-            symbol = coin.get('symbol', '???').upper()
-            # Use .get() with fallback 0 to prevent crash if key is missing
-            price_val = coin.get('current_price', 0)
-            price = f"${price_val:,}"
-            change = coin.get('price_change_percentage_24h', 0) or 0
-            
-            arrow = "▲" if change > 0 else "▼"
-            color_class = "ticker-up" if change > 0 else "ticker-down"
-            
-            segments.append(f"{symbol} {price} <span class='{color_class}'>{arrow} {abs(change):.2f}%</span>")
-            
-        return " | ".join(segments)
-    except Exception as e:
-        print(f"  [!] Price Fetch Error: {e}")
-        return "Market Pulse: Refreshing..."
+            ticker_text = " | ".join(segments)
+            # Save to cache
+            with open(cache_file, 'w') as f: f.write(ticker_text)
+            return ticker_text
+    except: pass
+    
+    # Fallback if API fails and no cache exists
+    return "Market Pulse: Synchronizing..."
         
 
 def fetch_market_sentiment():
@@ -154,6 +150,10 @@ def fetch_market_dashboard_data():
     print("  [~] Gathering Master Dashboard Data...")
     
     # 1. Start with the Rekt Base
+    # Get Ticker first (Cache protected)
+    ticker_display = fetch_live_prices()
+     # 2. Defensive Breather: Wait 5s before next API hit to avoid 429
+    time.sleep(5) 
     current_btc = fetch_rekt_base_data()
     
     # 2. Defensive Breather: Wait 5s before next API hit to avoid 429
@@ -168,7 +168,7 @@ def fetch_market_dashboard_data():
         "sentiment_label": "Neutral",
         "whales": [],
         "shadow_tracker": fetch_shadow_data(),
-        "btc_price": current_btc
+        "btc_price": fetch_rekt_base_data()
     }
 
     try:
@@ -378,7 +378,7 @@ def run_aggregator():
                 try:
                     wait = (idx + 1) * 5 
                     time.sleep(wait) 
-                    
+                    time.sleep(10) # <--- CRITICAL: Give Gemini a breather between models
                     response = client.models.generate_content(model=model_name, contents=prompt)
                     raw_text = re.sub(r'^```json\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE)
                     parsed_json = json.loads(raw_text)
