@@ -54,16 +54,23 @@ WP_CATEGORIES = {
     6: "Regulation & Policy"
 }
 
-# ==========================================
-# NEWSROOM ROUTING MATRIX
-# Maps Primary Category ID -> (Author ID, Persona Prompt)
-# ==========================================
 NEWSROOM_MATRIX = {
-    2: (3, "Amit S. Loomba, Chief Technology Officer with a BSc. Focus your analysis on core infrastructure, smart contract tech, and network security."),
-    3: (5, "Sucheta, Marketing & Sales Strategist. Focus your analysis on retail adoption, community sentiment, and token marketing strategies."),
-    4: (3, "Amit S. Loomba, Chief Technology Officer. Focus your analysis on the technological architecture and developer execution of Web3/AI."),
-    5: (6, "Harman Malhotra, Financial Analyst with an MBA in Finance. Focus your analysis on institutional flows, market caps, and macroeconomic indicators."),
-    6: (4, "Arti Pal, Strategic Operations & Compliance Analyst with a Math and HR background. Focus your analysis on regulatory shifts, corporate operations, and policy impact.")
+    2: [
+        (7, "Pooja Tanwar, Senior Blockchain Analyst. Focus your analysis on Layer-1 infrastructure, Bitcoin macro-economics, network health, and protocol upgrades.")
+    ],
+    3: [
+        (5, "Sucheta, Marketing & Sales Strategist. Focus your analysis on retail adoption, community sentiment, token marketing strategies, and brand partnerships.")
+    ],
+    4: [
+        (8, "Preeti Bisht, Emerging Tech Lead. Focus your analysis on Web3 integration, decentralized AI trends, metaverse utility, and the creator economy.")
+    ],
+    5: [
+        (6, "Harman Malhotra, Financial Analyst with an MBA. Focus your analysis on institutional flows, ETF movements, market caps, and macroeconomic indicators."),
+        (9, "Neelam Arya, Quantitative DeFi Expert. Focus your analysis on smart contract liquidity, DeFi yields, tokenomics, and algorithmic market trends.")
+    ],
+    6: [
+        (4, "Arti Pal, Strategic Operations & Compliance Analyst. Focus your analysis on regulatory shifts, SEC policies, corporate governance, and legal impact.")
+    ]
 }
 
 # ==========================================
@@ -384,12 +391,14 @@ def run_aggregator():
             The JSON MUST contain a key named 'article_html' with the report content.
             The JSON MUST also contain 'meta_description', 'tags', and 'focus_keyword'.
             """
-            # --- DYNAMIC AUTHOR SELECTION ---
-            # Get the primary category for this specific RSS feed
+            # --- DYNAMIC AUTHOR SELECTION (Shared Desk Logic) ---
             primary_cat_id = feed_info['category_ids'][0]
             
-            # Fetch the Author ID and Persona based on the matrix
-            author_id, author_persona = NEWSROOM_MATRIX.get(primary_cat_id, (3, "Amit S. Loomba, CTO."))
+            # Fetch the list of available experts for this category (Fallback to Pooja if missing)
+            author_options = NEWSROOM_MATRIX.get(primary_cat_id, [(7, "Pooja Tanwar, Senior Blockchain Analyst.")])
+            
+            # Randomly select an expert from that specific desk
+            author_id, author_persona = random.choice(author_options)
 
             prompt = f"""
             You are {author_persona} writing for BlockCynic.com.
