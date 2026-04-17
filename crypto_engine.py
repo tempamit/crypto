@@ -36,14 +36,12 @@ DB_FILE = f"{DB_PATH}crypto_processed.db"
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 FALLBACK_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash",
+    "gemini-2.0-flash-exp", # Better availability for experimental
+    "gemini-1.5-flash", 
+    "gemini-1.5-flash-8b",  # Very high quota, great for news
+    "gemini-2.0-flash-lite-preview-02-05", # Specific version
     "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-pro-preview"
+    "gemini-3.1-flash-lite-preview"
 ]
 
 WP_CATEGORIES = {
@@ -68,23 +66,33 @@ def fetch_live_prices():
             "order": "market_cap_desc",
             "price_change_percentage": "24h"
         }
-        data = requests.get(url, params=params, timeout=10).json()
+        # We use a custom Header to look less like a bot and reduce 429s
+        headers = {'User-Agent': 'Mozilla/5.0'} 
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        data = response.json()
         
+        if not isinstance(data, list):
+            print(f"  [!] Price API returned error or non-list: {data}")
+            return "Market Pulse: Synchronizing..."
+            
         segments = []
         for coin in data:
-            symbol = coin['symbol'].upper()
-            price = f"${coin['current_price']:,}"
-            change = coin['price_change_percentage_24h']
+            symbol = coin.get('symbol', '???').upper()
+            # Use .get() with fallback 0 to prevent crash if key is missing
+            price_val = coin.get('current_price', 0)
+            price = f"${price_val:,}"
+            change = coin.get('price_change_percentage_24h', 0) or 0
+            
             arrow = "▲" if change > 0 else "▼"
             color_class = "ticker-up" if change > 0 else "ticker-down"
             
-            # Formatting with span for your WP CSS
             segments.append(f"{symbol} {price} <span class='{color_class}'>{arrow} {abs(change):.2f}%</span>")
             
         return " | ".join(segments)
     except Exception as e:
         print(f"  [!] Price Fetch Error: {e}")
         return "Market Pulse: Refreshing..."
+        
 
 def fetch_market_sentiment():
     try:
