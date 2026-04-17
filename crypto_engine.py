@@ -444,6 +444,10 @@ def run_aggregator():
                 if wp_res.status_code == 201:
                     print(f"  [+] Success! Article Live: {wp_res.json().get('link')}")
                     mark_url_processed(article_link)
+                    
+                    # --- THE FIX: Stop the sweep after 1 successful post ---
+                    print("  [~] Rhythm Check: 1 post complete. Breaking sweep for 90-min rest.")
+                    return True # Tell the scheduler we successfully posted
                 else: print(f"  [!] WP Error: {wp_res.status_code}")
 
         except Exception as e: print(f"  [!] Error processing {feed_info['name']}: {e}")
